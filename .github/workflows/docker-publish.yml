@@ -32,12 +32,12 @@ jobs:
 
       - name: Set up Git and Push Tag
         env:
-          RELEASE_PAT: ${{ secrets.RELEASE_BOT }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT }}
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          git remote set-url origin https://x-access-token:${RELEASE_PAT}@github.com/tinkeshwar/ai-video-optimizer.git
           git tag ${{ steps.version.outputs.version }}
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/tinkeshwar/ai-video-optimizer.git
           git push origin ${{ steps.version.outputs.version }}
 
       - name: Create Release
