@@ -66,10 +66,27 @@ cd video-optimizer
 
 Place some `.mp4`, `.mov`, etc. files in the `videos/` folder.
 
-### 3. Start Services
+### 3. Docker Compose YML File
 
 ```bash
-docker-compose up --build
+services:
+  ai-video-optimizer-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-video-optimizer
+    env_file:
+      - .env
+    volumes:
+      - <path-to-config>:/data
+      - <path-to-video-directory>:/video-input
+      - <path-to-video-other-directory>:/video-input/other-directory
+      - <path-to-video-output>:/video-output
+    environment:
+      - SCAN_INTERVAL=30 // in seconds
+    ports:
+      - "<PORT>:8088"
+
 ```
 
 ---
