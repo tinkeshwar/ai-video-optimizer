@@ -3,8 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { Flex, Text, Box, Heading, Tabs } from '@radix-ui/themes';
 import FileTable from './FileTable';
 
-const API_HOST = 'http://localhost:8000';
-
 function FileList() {
   const [counts, setCounts] = useState([]);
 
@@ -14,7 +12,7 @@ function FileList() {
 
   const fetchFiles = async () => {
     try {
-      const response = await axios.get(`${API_HOST}/api/videos/status/count`);
+      const response = await axios.get(`/api/videos/status/count`);
       setCounts(response.data);
     } catch (err) {
       console.error('Error fetching files:', err);
@@ -31,7 +29,7 @@ function FileList() {
 
       <Box p="4">
         <Heading style={{ padding: ".2em"}}>Files</Heading>
-        <Tabs.Root defaultValue={(counts?.pending) ? 'pending' : ''}>
+        <Tabs.Root defaultValue="pending">
           <Tabs.List>
             <Tabs.Trigger disabled={!counts?.pending} value="pending">Pending ({ counts?.pending || 0})</Tabs.Trigger>
             <Tabs.Trigger disabled={!counts?.ready} value="ready">Ready ({ counts?.ready || 0})</Tabs.Trigger>

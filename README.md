@@ -24,12 +24,17 @@ This project automatically scans a directory for videos, extracts their metadata
 
 📦 docker-compose.yml
 ├── backend/           => FastAPI server
+│   ├── db.py          => DB setup
+│   ├── main.py        => main entry point
+│   └── routes.py      => API routes
 ├── workers/
 │   ├── scanner.py     => Scans videos directory
 │   ├── prepare.py     => Calls AI API
 │   ├── processor.py   => Runs ffmpeg
 │   └── mover.py       => Handles file replacement
 ├── frontend/          => React + Vite UI
+├── nginx/             => Nginx configuration
+│   └── default.conf   => Default nginx site config
 └── entrypoint.sh/     => Entrypoint for docker container start
 ```
 
@@ -71,7 +76,12 @@ docker-compose up --build
 
 ## 🌐 Access the App
 
-- **Frontend UI:** [http://localhost:3000](http://localhost:3000)
+- **Frontend UI:** By default, access the application at [http://localhost:8088](http://localhost:8088)
+- **Custom Port:** To use a different port, modify the port mapping in your docker-compose.yml:
+  ```yaml
+  ports:
+    - "your_port:8088"
+  ```
 
 ---
 

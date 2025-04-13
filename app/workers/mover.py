@@ -43,8 +43,7 @@ def replace_files(original_path, optimized_path, video_id):
       return False
     return True
         
-
-if __name__ == "__main__":
+def main():
   print("Starting to move files...")
   while True:
     videos = get_accepted_records()
@@ -54,3 +53,6 @@ if __name__ == "__main__":
       if command:
         print(f"Video replaced: {video['id']}")
     time.sleep(10)
+
+if __name__ == "__main__":
+  main()

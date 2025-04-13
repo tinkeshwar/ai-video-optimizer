@@ -1,11 +1,29 @@
 #!/bin/bash
 
-# Load environment variables
-source .env
+# Exit on error
+set -e
+
+# Verify dependencies
+command -v ffmpeg >/dev/null 2>&1 || { echo "Error: ffmpeg not found"; exit 1; }
+command -v nginx >/dev/null 2>&1 || { echo "Error: nginx not found"; exit 1; }
+command -v uvicorn >/dev/null 2>&1 || { echo "Error: uvicorn not found"; exit 1; }
+
+# Verify worker scripts
+for script in scanner.py prepare.py processor.py mover.py; do
+    if [ ! -f "workers/$script" ]; then
+        echo "Error: workers/$script not found!"
+        exit 1
+    fi
+done
+
+# Handle shutdown
+trap 'echo "Shutting down..."; kill $(jobs -p); wait' SIGTERM
 
 # Start backend
 echo "Starting backend..."
 uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+BACKEND_PID=$!
+sleep 5
 
 # Start workers
 echo "Starting scanner..."
@@ -20,9 +38,8 @@ python workers/processor.py &
 echo "Starting mover..."
 python workers/mover.py &
 
-# Start frontend
-echo "Serving frontend..."
-serve -s frontend/build -l 3000 &
+echo "Starting nginx..."
+nginx -g "daemon off;" &
 
 # Wait for all background jobs
 wait

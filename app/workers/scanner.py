@@ -21,7 +21,7 @@ def get_video_metadata(filepath):
             'ffprobe', '-v', 'quiet',
             '-print_format', 'json',
             '-show_format', '-show_streams',
-            filepath  # Pass the raw filepath directly
+            filepath
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
         return result.stdout
     except FileNotFoundError:
@@ -50,8 +50,11 @@ def scan_and_insert():
                 ''', (filename, filepath, metadata, filesize))
                 conn.commit()
 
-if __name__ == "__main__":
+def main():
     print("Starting directory scanner...")
     while True:
         scan_and_insert()
         time.sleep(SCAN_INTERVAL)
+        
+if __name__ == "__main__":
+    main()

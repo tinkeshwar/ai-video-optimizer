@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import router
-import db
+from backend.routes import router
+import backend.db as db
 from contextlib import asynccontextmanager
 import logging
 

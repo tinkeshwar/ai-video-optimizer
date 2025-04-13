@@ -4,8 +4,6 @@ import { CheckIcon, Cross2Icon } from "@radix-ui/react-icons";
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
-const API_HOST = 'http://localhost:8000';
-
 function FileTable({ status}) {
   const actionOn = ['pending', 'optimized'];
   const [files, setFiles] = useState([]);
@@ -16,7 +14,7 @@ function FileTable({ status}) {
 
   const fetchFiles = async () => {
     try {
-      const response = await axios.get(`${API_HOST}/api/videos/${status}`);
+      const response = await axios.get(`/api/videos/${status}`);
       setFiles(response.data);
     } catch (err) {
       console.error('Error fetching files:', err);
@@ -33,7 +31,7 @@ function FileTable({ status}) {
   const actionPositive = async (id) => {
     let newStatus = (status === 'pending') ? 'confirmed' : (status === 'optimized' ? 'accepted' : 'failed');
     try {
-      const response = await axios.post(`${API_HOST}/api/videos/${id}/status`, { status: newStatus });
+      const response = await axios.post(`/api/videos/${id}/status`, { status: newStatus });
       console.log('File accepted:', response.data);
       fetchFiles();
     } catch (err) {
@@ -43,7 +41,7 @@ function FileTable({ status}) {
   const actionNegative = async (id) => {
     let newStatus = (status === 'pending') ? 'rejected' : (status === 'optimized' ? 'skipped' : 'failed');
     try {
-      const response = await axios.post(`${API_HOST}/api/videos/${id}/status`, { status: newStatus });
+      const response = await axios.post(`/api/videos/${id}/status`, { status: newStatus });
       console.log('File rejected:', response.data);
       fetchFiles();
     } catch (err) {
