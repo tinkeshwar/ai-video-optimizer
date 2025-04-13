@@ -37,7 +37,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git tag ${{ steps.version.outputs.version }}
           git remote set-url origin https://x-access-token:${{ secrets.RELEASE_BOT }}@github.com/tinkeshwar/ai-video-optimizer.git
-          git push origin ${{ steps.version.outputs.version }}
+          git push https://${{ secrets.RELEASE_BOT }}@github.com/tinkeshwar/ai-video-optimizer.git ${{ steps.version.outputs.version }}
 
       - name: Create Release
         uses: actions/create-release@v1
