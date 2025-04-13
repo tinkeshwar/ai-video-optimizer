@@ -8,10 +8,12 @@ jobs:
   create-tag-release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -36,18 +38,16 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           git tag ${{ steps.version.outputs.version }}
-          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_BOT }}@github.com/tinkeshwar/ai-video-optimizer.git
-          git push https://${{ secrets.RELEASE_BOT }}@github.com/tinkeshwar/ai-video-optimizer.git ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
 
       - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
+          token: ${{ secrets.RELEASE_BOT }}
 
   build-and-push:
     needs: create-tag-release
@@ -56,16 +56,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Log in to Docker Hub
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Build and Push Image
         uses: docker/build-push-action@v5
@@ -73,4 +73,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: tinkeshwar/video-optimizer-ai:${{ github.ref_name }}
+          tags: |
+            tinkeshwar/video-optimizer-ai:latest
+            tinkeshwar/video-optimizer-ai:${{ needs.create-tag-release.outputs.version }}
+          cache-from: type=registry,ref=tinkeshwar/video-optimizer-ai:latest
+          cache-to: type=inline
