@@ -4,6 +4,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write    # Required for creating and pushing tags
+
 jobs:
   create-tag-release:
     if: github.ref == 'refs/heads/main'
@@ -32,11 +35,10 @@ jobs:
           echo "version=${new_version}" >> $GITHUB_OUTPUT
 
       - name: Set up Git and Push Tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git tag ${{ steps.version.outputs.version }}
           git push origin ${{ steps.version.outputs.version }}
 
