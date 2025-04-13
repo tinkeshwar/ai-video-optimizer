@@ -37,8 +37,13 @@ jobs:
 
       - name: Create tag
         run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
           git tag ${{ steps.version.outputs.version }}
-          git push origin ${{ steps.version.outputs.version }}
+          git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git ${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT }}
+        
 
       - name: Create Release
         uses: actions/create-release@v1
