@@ -30,7 +30,7 @@ This project automatically scans a directory for videos, extracts their metadata
 │   ├── processor.py   => Runs ffmpeg
 │   └── mover.py       => Handles file replacement
 ├── frontend/          => React + Vite UI
-└── mock_ai/           => (Optional) Simulated AI API
+└── entrypoint.sh/     => Entrypoint for docker container start
 ```
 
 ---
@@ -41,7 +41,6 @@ This project automatically scans a directory for videos, extracts their metadata
 VIDEO_DIR=/video-input
 OUTPUT_DIR=/video-output
 DB_PATH=/data/video_db.sqlite
-AI_API_URL=http://ai-service:5000/optimize
 SCAN_INTERVAL=30
 FRONTEND_PORT=3000
 OPENAI_API_KEY=your_api_key
@@ -73,8 +72,6 @@ docker-compose up --build
 ## 🌐 Access the App
 
 - **Frontend UI:** [http://localhost:3000](http://localhost:3000)
-- **Backend API:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Mock AI Service:** [http://localhost:5000/optimize](http://localhost:5000/optimize)
 
 ---
 
@@ -108,7 +105,7 @@ docker-compose up --build
 
 ## ✅ Video Status Flow
 
-```
+```text
 pending → confirmed → ready → optimized → accepted → replaced/failed
          ↑    ↓          ↓           ↓           ↓
       rejected     (AI)   (ffmpeg)  (User)    (Mover)
@@ -118,10 +115,8 @@ pending → confirmed → ready → optimized → accepted → replaced/failed
 
 ## 🧠 Sample AI Response
 
-```json
-{
-  "ffmpeg_command": "ffmpeg -i input.mp4 -vcodec libx265 -crf 28 output.mp4"
-}
+```text
+ffmpeg -i input.mp4 -vcodec libx265 -crf 28 output.mp4
 ```
 
 ---
