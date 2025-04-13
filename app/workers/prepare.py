@@ -59,6 +59,15 @@ def get_system_info() -> Dict[str, str]:
     except (subprocess.SubprocessError, FileNotFoundError):
         pass
 
+    try:
+        vainfo = subprocess.check_output(["vainfo"], stderr=subprocess.DEVNULL, text=True)
+        if "VAProfile" in vainfo:
+            info["GPU_Acceleration"] = "VAAPI available"
+    except FileNotFoundError:
+        info["GPU_Acceleration"] = "vainfo not installed"
+    except subprocess.SubprocessError:
+        info["GPU_Acceleration"] = "vainfo failed"
+        
     # Fallback to lspci on Linux
     if platform.system().lower() == "linux":
         try:

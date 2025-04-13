@@ -26,7 +26,7 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # Install dependencies
-RUN apt-get update && apt-get install -y ffmpeg curl nginx && \
+RUN apt-get update && apt-get install -y ffmpeg pciutils rocm-smi nginx && \
     apt-get update && apt-get install -y gnupg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
