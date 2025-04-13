@@ -2,8 +2,6 @@ name: Build and Push Docker Image
 
 on:
   push:
-    tags:
-      - '*'
     branches:
       - main
 
@@ -11,39 +9,34 @@ jobs:
   create-tag-release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
+
       - name: Get latest tag
         id: previoustag
         run: |
-          # Get latest tag or default to 1.0.0 if no tags exist
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0")
           echo "latest_tag=${latest_tag}" >> $GITHUB_OUTPUT
-      
+
       - name: Generate version
         id: version
         run: |
-          # Split latest tag into major, minor, patch
           IFS='.' read -r major minor patch <<< "${{ steps.previoustag.outputs.latest_tag }}"
-          # Increment patch version
           new_patch=$((patch + 1))
-          # Create new version
           new_version="${major}.${minor}.${new_patch}"
           echo "version=${new_version}" >> $GITHUB_OUTPUT
 
-      - name: Create tag
+      - name: Set up Git credentials
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_BOT }}@github.com/tinkeshwar/ai-video-optimizer.git
           git tag ${{ steps.version.outputs.version }}
-          git push https://${GITHUB_TOKEN}@github.com/tinkeshwar/ai-video-optimizer.git ${{ steps.version.outputs.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_BOT }}
-        
+          git push origin ${{ steps.version.outputs.version }}
 
       - name: Create Release
         uses: actions/create-release@v1
@@ -80,5 +73,3 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: tinkeshwar/video-optimizer-ai:${{ github.ref_name }}
-
-          
