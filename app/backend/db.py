@@ -1,8 +1,13 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+import logging
 
 DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
+logger = logging.getLogger(__name__)
 
 @contextmanager
 def get_db():
@@ -55,8 +60,8 @@ def init_db():
 
             # Commit changes to the database
             conn.commit()
-            print("Database initialized successfully.")
+            logger.info("Database initialized successfully.")
         except sqlite3.DatabaseError as e:
-            print(f"Database error during initialization: {e}")
+            logger.error(f"Database error during initialization: {e}")
         finally:
             cursor.close()  # Ensure cursor is closed even in case of an error

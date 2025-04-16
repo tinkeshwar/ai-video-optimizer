@@ -9,14 +9,18 @@ from contextlib import contextmanager
 from sqlite3 import Row, connect
 from typing import Dict, List, Optional
 import re
-
 from openai import OpenAI
+import logging
 
 # Environment Config
 DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 AI_BATCH_SIZE = int(os.getenv("AI_BATCH_SIZE", 3))
 AI_INTERVAL = int(os.getenv("AI_INTERVAL", 10))
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
+logger = logging.getLogger(__name__)
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -145,7 +149,7 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[AI Error] {str(e)}")
+        logger.error(f"[AI Error] {str(e)}")
         return None
 
 def update_video(video_id: int, command: str) -> None:
@@ -160,20 +164,20 @@ def update_video(video_id: int, command: str) -> None:
 def process_batch():
     videos = get_confirmed_videos(AI_BATCH_SIZE)
     if not videos:
-        print("No confirmed videos to process.")
+        logger.info("No confirmed videos to process.")
         return
 
     system_info = get_system_info()
 
     for video in videos:
-        print(f"Sending to AI: {video['filename']}")
+        logger.info(f"Sending to AI: {video['filename']}")
         command = send_to_ai(video["ffprobe_data"], system_info)
         if command:
             command = extract_ffmpeg_command(command)
             update_video(video["id"], command)
-            print(f"[Saved] AI command saved for video ID: {video['id']}")
+            logger.info(f"[Saved] AI command saved for video ID: {video['id']}")
         else:
-            print(f"[Skipped] AI command failed for video ID: {video['id']}")
+            logger.warning(f"[Skipped] AI command failed for video ID: {video['id']}")
 
 def extract_ffmpeg_command(text: str) -> str:
     text = re.sub(r"^```(?:bash)?\s*", "", text.strip(), flags=re.IGNORECASE)
@@ -186,12 +190,12 @@ def extract_ffmpeg_command(text: str) -> str:
         return text.strip()
 
 def main():
-    print("Starting AI Command Generator...")
+    logger.info("Starting AI Command Generator...")
     while True:
         try:
             process_batch()
         except Exception as e:
-            print(f"[Main Error] {e}")
+            logger.error(f"[Main Error] {e}")
         time.sleep(AI_INTERVAL)
 
 if __name__ == "__main__":

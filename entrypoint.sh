@@ -38,6 +38,9 @@ python workers/processor.py &
 echo "Starting mover..."
 python workers/mover.py &
 
+echo "Starting approver..."
+python workers/approver.py &
+
 echo "Starting nginx..."
 nginx -g "daemon off;" &
 

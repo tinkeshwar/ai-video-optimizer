@@ -14,7 +14,7 @@ SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 30))
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov'}
 
 # === Logger Setup ===
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
 logger = logging.getLogger(__name__)
 
 
