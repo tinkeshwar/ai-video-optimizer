@@ -8,6 +8,7 @@ import time
 from contextlib import contextmanager
 from sqlite3 import Row, connect
 from typing import Dict, List, Optional
+import re
 
 from openai import OpenAI
 
@@ -167,10 +168,21 @@ def process_batch():
         print(f"Sending to AI: {video['filename']}")
         command = send_to_ai(video["ffprobe_data"], system_info)
         if command:
+            command = extract_ffmpeg_command(command)
             update_video(video["id"], command)
             print(f"[Saved] AI command saved for video ID: {video['id']}")
         else:
             print(f"[Skipped] AI command failed for video ID: {video['id']}")
+
+def extract_ffmpeg_command(text: str) -> str:
+    text = re.sub(r"^```(?:bash)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text.strip())
+    match = re.search(r"(ffmpeg\s.+)", text, flags=re.DOTALL)
+    if match:
+        command = match.group(1).strip()
+        return command
+    else:
+        return text.strip()
 
 def main():
     print("Starting AI Command Generator...")
