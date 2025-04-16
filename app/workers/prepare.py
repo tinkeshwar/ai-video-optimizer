@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import json
 import os
 import platform
@@ -9,8 +11,11 @@ from typing import Dict, List, Optional
 
 from openai import OpenAI
 
+# Environment Config
 DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+AI_BATCH_SIZE = int(os.getenv("AI_BATCH_SIZE", 3))
+AI_INTERVAL = int(os.getenv("AI_INTERVAL", 10))
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -59,6 +64,7 @@ def get_system_info() -> Dict[str, str]:
     except (subprocess.SubprocessError, FileNotFoundError):
         pass
 
+    # Try VAAPI detection
     try:
         vainfo = subprocess.check_output(["vainfo"], stderr=subprocess.DEVNULL, text=True)
         if "VAProfile" in vainfo:
@@ -67,18 +73,13 @@ def get_system_info() -> Dict[str, str]:
         info["GPU_Acceleration"] = "vainfo not installed"
     except subprocess.SubprocessError:
         info["GPU_Acceleration"] = "vainfo failed"
-        
-    # Fallback to lspci on Linux
+
+    # lspci fallback
     if platform.system().lower() == "linux":
         try:
-            lspci_output = subprocess.check_output(
-                ["lspci"], 
-                text=True,
-                stderr=subprocess.DEVNULL
-            )
+            lspci_output = subprocess.check_output(["lspci"], text=True, stderr=subprocess.DEVNULL)
             amd_lines = [line for line in lspci_output.splitlines() if "AMD" in line or "ATI" in line]
             nvidia_lines = [line for line in lspci_output.splitlines() if "NVIDIA" in line]
-            
             if amd_lines:
                 info["GPU"] = f"AMD GPU detected via lspci: {amd_lines[0]}"
             elif nvidia_lines:
@@ -92,10 +93,12 @@ def get_system_info() -> Dict[str, str]:
 
     return info
 
-def get_confirmed_videos() -> List[Dict]:
+def get_confirmed_videos(limit: int) -> List[Dict]:
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM videos WHERE status = 'confirmed'")
+        cursor.execute(
+            "SELECT * FROM videos WHERE status = 'confirmed' LIMIT ?", (limit,)
+        )
         return [dict(row) for row in cursor.fetchall()]
 
 def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
@@ -108,13 +111,10 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
         - Use the same resolution and frame rate as the original video.
         - No visible quality loss.
         - Optionally using hardware acceleration if available.
-        - Do not provide any other information or explanation, just the command stating with ffmpeg and parameter example output: ffmpeg -i input.mp4 -c:v libx265 -preset slow -x265-params log-level=error -crf 28 -c:a aac -b:a 192k -movflags +faststart -vf scale=1920:1080 -r 30000/1001 output.mp4, do not add bash or anything.
-        - Consider the command is to be run in python subprocess.run in list form so you need to escape properly or avoid extra quotes.
+        - Do not provide any other information or explanation, just the command starting with ffmpeg.
         - Use input.mp4 as the input file and output.mp4 as the output file.
-        - The command should be in a single line and should not contain any newlines or extra spaces.
-        - The command should be compatible with ffmpeg version 5.0 or higher.
-        - The command should be compatible with the system information provided.
-        """
+        - One line only, suitable for subprocess.run with no shell wrapping.
+    """
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
@@ -125,9 +125,9 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
             ],
             temperature=0.3
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"AI API error: {str(e)}")
+        print(f"[AI Error] {str(e)}")
         return None
 
 def update_video(video_id: int, command: str) -> None:
@@ -139,27 +139,31 @@ def update_video(video_id: int, command: str) -> None:
         )
         conn.commit()
 
+def process_batch():
+    videos = get_confirmed_videos(AI_BATCH_SIZE)
+    if not videos:
+        print("No confirmed videos to process.")
+        return
+
+    system_info = get_system_info()
+
+    for video in videos:
+        print(f"Sending to AI: {video['filename']}")
+        command = send_to_ai(video["ffprobe_data"], system_info)
+        if command:
+            update_video(video["id"], command)
+            print(f"[Saved] AI command saved for video ID: {video['id']}")
+        else:
+            print(f"[Skipped] AI command failed for video ID: {video['id']}")
+
 def main():
-    print("Starting AI prepare...")
+    print("Starting AI Command Generator...")
     while True:
         try:
-            videos = get_confirmed_videos()
-            if not videos:
-                time.sleep(10)
-                continue
-                
-            system_info = get_system_info()
-            for video in videos:
-                print(f"Sending to AI: {video['filename']}")
-                command = send_to_ai(video["ffprobe_data"], system_info)
-                if command:
-                    update_video(video["id"], command)
-                    print(f"Command saved for video {video['id']}")
-                
-            time.sleep(10)
+            process_batch()
         except Exception as e:
-            print(f"Error in main loop: {str(e)}")
-            time.sleep(30)
+            print(f"[Main Error] {e}")
+        time.sleep(AI_INTERVAL)
 
 if __name__ == "__main__":
     main()
