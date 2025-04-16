@@ -26,8 +26,7 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # Install dependencies
-RUN apt-get update && apt-get install -y ffmpeg pciutils rocm-smi nginx && \
-    apt-get update && apt-get install -y gnupg && \
+RUN apt-get update && apt-get install -y ffmpeg pciutils rocm-smi nginx vainfo && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-base /app/backend ./backend

@@ -46,3 +46,14 @@ def get_status_counts():
         rows = cursor.fetchall()
         conn.close()
         return {row['status']: row['count'] for row in rows}
+    
+@router.delete("/api/videos/{video_id}")
+def delete_video(video_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Video not found")
+        conn.close()
+        return {"message": f"Video {video_id} deleted successfully"}

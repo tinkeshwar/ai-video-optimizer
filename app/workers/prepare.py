@@ -129,6 +129,7 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
             - Only return a single-line ffmpeg command starting with `ffmpeg`.
             - Use `input.mp4` as input and `output.mp4` as output.
             - No extra explanation or formatting.
+            - In file exist in output command should overwrite the file.
 
         Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
     """

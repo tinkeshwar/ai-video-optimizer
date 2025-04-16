@@ -1,11 +1,14 @@
 import React from 'react';
 import { Flex, Button, Table } from '@radix-ui/themes';
-import { CheckIcon, Cross2Icon } from "@radix-ui/react-icons";
+import { CheckIcon, Cross2Icon, ResetIcon, TrashIcon } from "@radix-ui/react-icons";
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
 function FileTable({ status}) {
   const actionOn = ['pending', 'optimized'];
+  const revertOn = ['ready'];
+  const deleteOn = ['rejected', 'skipped', 'failed'];
+
   const [files, setFiles] = useState([]);
 
   useEffect(() => {
@@ -49,6 +52,27 @@ function FileTable({ status}) {
     }
   }
 
+  const actionRevert = async (id) => {
+    try {
+      const response = await axios.post(`/api/videos/${id}/status`, { status: 'pending' });
+      console.log('File reverted:', response.data);
+      fetchFiles();
+    } catch (err) {
+      console.error('Error reverting file:', err);
+    }
+  }
+
+  const actionDelete = async (id) => {
+    try {
+      const response = await axios.delete(`/api/videos/${id}`);
+      console.log('File deleted:', response.data);
+      fetchFiles();
+    }
+    catch (err) {
+      console.error('Error deleting file:', err);
+    }
+  }
+
   return (
     <Table.Root size="1">
       <Table.Header>
@@ -57,7 +81,7 @@ function FileTable({ status}) {
           <Table.ColumnHeaderCell>Path</Table.ColumnHeaderCell>
           <Table.ColumnHeaderCell>Codec</Table.ColumnHeaderCell>
           <Table.ColumnHeaderCell>Size</Table.ColumnHeaderCell>
-          {actionOn.includes(status) && <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>}
+          {[...actionOn, ...revertOn, ...deleteOn].includes(status) && <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>}
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -73,10 +97,12 @@ function FileTable({ status}) {
               {byteToGigabyte(Number(file.original_size))}
               {file.optimized_size && `|${byteToGigabyte(Number(file.optimized_size))}`}
             </Table.Cell>
-            {actionOn.includes(status) && <Table.Cell>
+            {[...actionOn, ...revertOn, ...deleteOn].includes(status) && <Table.Cell>
               <Flex gap="2">
-                <Button size="1" color="green" onClick={() => actionPositive(file.id)}><CheckIcon/></Button>
-                <Button size="1" color="red" onClick={() => actionNegative(file.id)}><Cross2Icon/></Button>
+                {actionOn.includes(status) && <Button size="1" color="green" onClick={() => actionPositive(file.id)}><CheckIcon/></Button>}
+                {actionOn.includes(status) && <Button size="1" color="yellow" onClick={() => actionNegative(file.id)}><Cross2Icon/></Button>}
+                {revertOn.includes(status) && <Button size="1" color="blue" onClick={() => actionRevert(file.id)}><ResetIcon/></Button>}
+                {deleteOn.includes(status) && <Button size="1" color="red" onClick={() => actionDelete(file.id)}><TrashIcon/></Button>}
               </Flex>
             </Table.Cell>}
           </Table.Row>
