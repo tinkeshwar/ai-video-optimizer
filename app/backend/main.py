@@ -5,17 +5,21 @@ import backend.db as db
 from contextlib import asynccontextmanager
 import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        logging.info("Initializing database...")
+        logger.info("Initializing database...")
         db.init_db()
         yield
     except Exception as e:
-        logging.error(f"Error initializing database: {e}")
+        logger.error(f"Error initializing database: {e}")
         raise
     finally:
-        logging.info("Shutting down...")
+        logger.info("Shutting down...")
 
 app = FastAPI(
     title="API",

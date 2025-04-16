@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import time
+import logging
 
 DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 BATCH_SIZE = int(os.getenv("CONFIRM_BATCH_SIZE", 10))
@@ -9,9 +10,13 @@ CONFIRM_INTERVAL = int(os.getenv("CONFIRM_INTERVAL", 60))
 AUTO_CONFIRMED = os.getenv("AUTO_CONFIRMED", "false").lower() == "true"
 AUTO_ACCEPT = os.getenv("AUTO_ACCEPT", "false").lower() == "true"
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
+logger = logging.getLogger(__name__)
+
 def confirm_pending_videos():
     if not AUTO_CONFIRMED:
-        print("AUTO_CONFIRMED is disabled. Skipping confirmation.")
+        logger.info("Auto confirmation is disabled. Skipping confirmation.")
         return
 
     with sqlite3.connect(DB_PATH) as conn:
@@ -25,7 +30,7 @@ def confirm_pending_videos():
         
         rows = cursor.fetchall()
         if not rows:
-            print("No pending videos to confirm.")
+            logger.info("No pending videos to confirm.")
             return
 
         ids = [row[0] for row in rows]
@@ -37,12 +42,12 @@ def confirm_pending_videos():
         """, ids)
 
         conn.commit()
-        print(f"Confirmed {len(ids)} videos.")
+        logger.info(f"Confirmed {len(ids)} videos.")
 
 
 def accept_optimized_videos():
     if not AUTO_ACCEPT:
-        print("AUTO_ACCEPT is disabled. Skipping optimization acceptance.")
+        logger.info("Auto acceptance is disabled. Skipping optimization acceptance.")
         return
 
     with sqlite3.connect(DB_PATH) as conn:
@@ -57,16 +62,16 @@ def accept_optimized_videos():
         count = cursor.rowcount
         conn.commit()
 
-        print(f"Accepted {count} optimized videos.")
+        logger.info(f"Accepted {count} optimized videos.")
 
 def main():
-    print("Starting auto confirmer and accepter...")
+    logger.info("Starting auto confirmation and acceptance...")
     while True:
         try:
             confirm_pending_videos()
             accept_optimized_videos()
         except Exception as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
         time.sleep(CONFIRM_INTERVAL)
 
 if __name__ == "__main__":

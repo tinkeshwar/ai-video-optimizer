@@ -34,42 +34,25 @@ jobs:
           new_version="${major}.${minor}.${new_patch}"
           echo "version=${new_version}" >> $GITHUB_OUTPUT
 
-  approval:
-    needs: create-tag-release
-    runs-on: ubuntu-latest
-    environment: 'production'
-    steps:
-      - name: Manual Approval Step
-        run: echo "Deployment approved"
-
-  tag-and-release:
-    needs: [create-tag-release, approval]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Set up Git and Push Tag
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          git tag ${{ needs.create-tag-release.outputs.version }}
-          git push origin ${{ needs.create-tag-release.outputs.version }}
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.create-tag-release.outputs.version }}
-          name: Release ${{ needs.create-tag-release.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-push:
-    needs: [create-tag-release, approval]
+    needs: create-tag-release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 

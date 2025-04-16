@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 from contextlib import contextmanager
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
 logger = logging.getLogger(__name__)
 
 # Constants
