@@ -31,12 +31,19 @@ def get_db():
 
 def get_system_info() -> Dict[str, str]:
     info = {
-        "OS": platform.system(),
-        "OS_Version": platform.version(),
+        "OS": os.getenv("HOST_OS", platform.system()),
+        "OS_Version": os.getenv("HOST_OS_VERSION", platform.version()),
         "Architecture": platform.machine(),
-        "Processor": platform.processor(),
-        "Python_Version": platform.python_version()
+        "Processor": os.getenv("HOST_CPU_MODEL", platform.processor()),
+        "Total_RAM_kB": os.getenv("HOST_TOTAL_RAM", "Unknown"),
+        "Python_Version": platform.python_version(),
     }
+
+    # GPU from ENV if available
+    env_gpu = os.getenv("HOST_GPU_MODEL")
+    if env_gpu:
+        info["GPU"] = f"Host GPU: {env_gpu}"
+        return info
 
     # Try NVIDIA GPU detection
     try:
@@ -93,6 +100,7 @@ def get_system_info() -> Dict[str, str]:
 
     return info
 
+
 def get_confirmed_videos(limit: int) -> List[Dict]:
     with get_db() as conn:
         cursor = conn.cursor()
@@ -104,16 +112,24 @@ def get_confirmed_videos(limit: int) -> List[Dict]:
 def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
     prompt = f"""
         Here is the metadata of a video file:
-        The ffprobe data is: {json.dumps(ffprobe_data, indent=2)}
-        And here is the system information: {json.dumps(system_info, indent=2)}
-        Based on this information, suggest the most optimal ffmpeg command to compress the video with:
-        - Best possible space saving, prefer x265 codec.
-        - Use the same resolution and frame rate as the original video.
-        - No visible quality loss.
-        - Optionally using hardware acceleration if available.
-        - Do not provide any other information or explanation, just the command starting with ffmpeg.
-        - Use input.mp4 as the input file and output.mp4 as the output file.
-        - One line only, suitable for subprocess.run with no shell wrapping.
+        ffprobe data: {json.dumps(ffprobe_data, indent=2)}
+
+        System info: {json.dumps(system_info, indent=2)}
+
+        Your task is to generate the most optimal ffmpeg command to compress this video with the following requirements:
+
+            - Prioritize significant space savings while preserving visual quality.
+            - Use the **x265** codec if supported.
+            - Maintain the original **resolution** and **frame rate** exactly.
+            - Use **hardware acceleration** (e.g., NVENC, VAAPI, or QSV) if available in system_info.
+            - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22 or better).
+            - Audio should be copied without re-encoding.
+            - The result should be web-streaming friendly (i.e., add `-movflags +faststart`).
+            - Only return a single-line ffmpeg command starting with `ffmpeg`.
+            - Use `input.mp4` as input and `output.mp4` as output.
+            - No extra explanation or formatting.
+
+        Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
     """
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
