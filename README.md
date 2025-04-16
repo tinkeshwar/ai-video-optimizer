@@ -31,6 +31,7 @@ This project automatically scans a directory for videos, extracts their metadata
 │   ├── scanner.py     => Scans videos directory
 │   ├── prepare.py     => Calls AI API
 │   ├── processor.py   => Runs ffmpeg
+│   ├── approver.py    => Auto approve to process and replace if set in ENV
 │   └── mover.py       => Handles file replacement
 ├── frontend/          => React + Vite UI
 ├── nginx/             => Nginx configuration
@@ -49,6 +50,13 @@ DB_PATH=/data/video_db.sqlite
 SCAN_INTERVAL=30
 FRONTEND_PORT=3000
 OPENAI_API_KEY=your_api_key
+AUTO_CONFIRMED=true/false
+AUTO_ACCEPT=true/false
+HOST_CPU_MODEL="$(lscpu | grep 'Model name' | awk -F ':' '{print $2}' | xargs)"
+HOST_TOTAL_RAM="$(grep MemTotal /proc/meminfo | awk '{print $2}')" \
+HOST_GPU_MODEL="$(lspci | grep -E 'VGA|3D' | xargs)" \
+HOST_OS="$(uname -s)" \
+HOST_OS_VERSION="$(uname -r)" \
 ```
 
 ---

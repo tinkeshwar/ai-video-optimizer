@@ -55,8 +55,8 @@ function FileTable({ status}) {
         <Table.Row>
           <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
           <Table.ColumnHeaderCell>Path</Table.ColumnHeaderCell>
+          <Table.ColumnHeaderCell>Codec</Table.ColumnHeaderCell>
           <Table.ColumnHeaderCell>Size</Table.ColumnHeaderCell>
-          <Table.ColumnHeaderCell>Optimized</Table.ColumnHeaderCell>
           {actionOn.includes(status) && <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>}
         </Table.Row>
       </Table.Header>
@@ -65,8 +65,14 @@ function FileTable({ status}) {
           <Table.Row key={file.id}>
             <Table.Cell>{file.filename}</Table.Cell>
             <Table.Cell>{file.filepath}</Table.Cell>
-            <Table.Cell>{byteToGigabyte(Number(file.original_size))}</Table.Cell>
-            <Table.Cell>{byteToGigabyte(Number(file.optimized_size))}</Table.Cell>
+            <Table.Cell>
+              {file.original_codec}
+              {file.new_codec && ` | ${file.new_codec}`}
+            </Table.Cell>
+            <Table.Cell>
+              {byteToGigabyte(Number(file.original_size))}
+              {file.optimized_size && `|${byteToGigabyte(Number(file.optimized_size))}`}
+            </Table.Cell>
             {actionOn.includes(status) && <Table.Cell>
               <Flex gap="2">
                 <Button size="1" color="green" onClick={() => actionPositive(file.id)}><CheckIcon/></Button>
