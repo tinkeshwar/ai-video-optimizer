@@ -53,10 +53,10 @@ OPENAI_API_KEY=your_api_key
 AUTO_CONFIRMED=true/false
 AUTO_ACCEPT=true/false
 HOST_CPU_MODEL="$(lscpu | grep 'Model name' | awk -F ':' '{print $2}' | xargs)"
-HOST_TOTAL_RAM="$(grep MemTotal /proc/meminfo | awk '{print $2}')" \
-HOST_GPU_MODEL="$(lspci | grep -E 'VGA|3D' | xargs)" \
-HOST_OS="$(uname -s)" \
-HOST_OS_VERSION="$(uname -r)" \
+HOST_TOTAL_RAM="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
+HOST_GPU_MODEL="$(lspci | grep -E 'VGA|3D' | xargs)"
+HOST_OS="$(uname -s)"
+HOST_OS_VERSION="$(uname -r)"
 ```
 
 ---
