@@ -1,15 +1,18 @@
 import os
 import time
-import sqlite3
-import subprocess
 import logging
 from pathlib import Path
 from typing import Iterator, Optional, List
 import json
+import subprocess
+from backend.db_operations import (
+    get_video_by_path,
+    insert_video as db_insert_video,
+    DatabaseError
+)
 
 # === Configuration ===
 VIDEO_DIR = os.getenv("VIDEO_DIR", "/video-input")
-DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 30))
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov'}
 
@@ -45,57 +48,86 @@ def get_video_metadata_and_codec(filepath: Path) -> Optional[dict]:
     return None
 
 
-def file_already_exists(cursor: sqlite3.Cursor, path: Path) -> bool:
-    cursor.execute("SELECT 1 FROM videos WHERE filepath = ? LIMIT 1", (str(path),))
-    return cursor.fetchone() is not None
-
-
-def insert_video(cursor: sqlite3.Cursor, filepath: Path, metadata: str, codec: str, size: int) -> None:
-    cursor.execute("""
-        INSERT INTO videos (filename, filepath, ffprobe_data, status, original_size, original_codec)
-        VALUES (?, ?, ?, 'pending', ?, ?)
-    """, (filepath.name, str(filepath), metadata, size, codec))
-
-
 # === Main Scanner ===
 def scan_and_insert() -> None:
+    """
+    Scan for new video files and insert them into the database.
+    Uses the new database operations module with proper concurrency handling.
+    """
     logger.info("Scanning for new video files...")
     new_files: List[Path] = []
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-
-        for filepath in get_video_files(VIDEO_DIR):
-            if file_already_exists(cursor, filepath):
+    for filepath in get_video_files(VIDEO_DIR):
+        try:
+            # Check if file exists using the new db_operations module
+            if get_video_by_path(str(filepath)):
                 continue
 
             data = get_video_metadata_and_codec(filepath)
+            if not data:
+                continue
 
-            if data:
-                # Extract metadata and codec
-                metadata = json.dumps(data['format'], indent=2)
-                codec = data['streams'][0]['codec_name'] if 'streams' in data and data['streams'] else 'Unknown'
-                size = filepath.stat().st_size
-                insert_video(cursor, filepath, metadata, codec, size)
+            # Extract metadata and codec
+            metadata = json.dumps(data['format'], indent=2)
+            codec = data['streams'][0]['codec_name'] if 'streams' in data and data['streams'] else 'Unknown'
+            size = filepath.stat().st_size
+
+            # Insert video using the new db_operations module
+            try:
+                db_insert_video(
+                    filepath=str(filepath),
+                    filename=filepath.name,
+                    metadata=metadata,
+                    codec=codec,
+                    size=size
+                )
                 new_files.append(filepath)
+                logger.debug(f"Successfully inserted video: {filepath.name}")
+            except DatabaseError as e:
+                logger.error(f"Failed to insert video {filepath.name}: {e}")
 
-        if new_files:
-            conn.commit()
-            logger.info(f"Inserted {len(new_files)} new videos into the database.")
-        else:
-            logger.info("No new videos found.")
+        except Exception as e:
+            logger.error(f"Error processing file {filepath}: {e}")
+            continue
 
+    if new_files:
+        logger.info(f"Inserted {len(new_files)} new videos into the database.")
+    else:
+        logger.info("No new videos found.")
 
 
 def main() -> None:
+    """
+    Main function that runs the scanner in a continuous loop.
+    Includes improved error handling and logging.
+    """
     logger.info("Starting video directory scanner...")
+    consecutive_errors = 0
+    max_consecutive_errors = 3
+    base_delay = SCAN_INTERVAL
+    
     while True:
         try:
             scan_and_insert()
+            consecutive_errors = 0  # Reset error counter on success
+            time.sleep(base_delay)
+            
         except Exception as e:
-            logger.exception(f"Error during scan: {e}")
-        time.sleep(SCAN_INTERVAL)
+            consecutive_errors += 1
+            logger.exception(f"Error during scan (attempt {consecutive_errors}): {e}")
+            
+            # Implement exponential backoff
+            delay = min(base_delay * (2 ** consecutive_errors), 300)  # Max 5 minutes
+            logger.info(f"Waiting {delay} seconds before next attempt...")
+            
+            # If too many consecutive errors, exit
+            if consecutive_errors >= max_consecutive_errors:
+                logger.critical(f"Too many consecutive errors ({consecutive_errors}). Exiting...")
+                raise SystemExit(1)
+                
+            time.sleep(delay)
 
 
 if __name__ == "__main__":
     main()
+

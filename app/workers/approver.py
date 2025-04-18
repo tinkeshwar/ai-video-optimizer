@@ -1,9 +1,12 @@
 import os
-import sqlite3
 import time
 import logging
+from backend.db_operations import (
+    get_pending_videos,
+    get_optimized_videos,
+    update_status_of_multiple_videos
+)
 
-DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 BATCH_SIZE = int(os.getenv("CONFIRM_BATCH_SIZE", 10))
 CONFIRM_INTERVAL = int(os.getenv("CONFIRM_INTERVAL", 60))
 
@@ -19,30 +22,15 @@ def confirm_pending_videos():
         logger.info("Auto confirmation is disabled. Skipping confirmation.")
         return
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
+    pending_videos = get_pending_videos(BATCH_SIZE)
+    if not pending_videos:
+        logger.info("No pending videos to confirm.")
+        return
+    
+    ids = [row[0] for row in pending_videos]
+    update_status_of_multiple_videos(ids, 'confirmed')
+    logger.info(f"Confirmed {len(ids)} pending videos.")
 
-        cursor.execute("""
-            SELECT id FROM videos
-            WHERE status = 'pending'
-            LIMIT ?
-        """, (BATCH_SIZE,))
-        
-        rows = cursor.fetchall()
-        if not rows:
-            logger.info("No pending videos to confirm.")
-            return
-
-        ids = [row[0] for row in rows]
-
-        cursor.execute(f"""
-            UPDATE videos
-            SET status = 'confirmed'
-            WHERE id IN ({','.join('?' for _ in ids)})
-        """, ids)
-
-        conn.commit()
-        logger.info(f"Confirmed {len(ids)} videos.")
 
 
 def accept_optimized_videos():
@@ -50,19 +38,13 @@ def accept_optimized_videos():
         logger.info("Auto acceptance is disabled. Skipping optimization acceptance.")
         return
 
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE videos
-            SET status = 'accepted'
-            WHERE status = 'optimized'
-        """)
-
-        count = cursor.rowcount
-        conn.commit()
-
-        logger.info(f"Accepted {count} optimized videos.")
+    optimized_videos = get_optimized_videos(BATCH_SIZE)
+    if not optimized_videos:
+        logger.info("No optimized videos to accept.")
+        return
+    ids = [row[0] for row in optimized_videos]
+    update_status_of_multiple_videos(ids, 'accepted')
+    logger.info(f"Accepted {len(ids)} optimized videos.")
 
 def main():
     logger.info("Starting auto confirmation and acceptance...")

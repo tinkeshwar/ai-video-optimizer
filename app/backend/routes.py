@@ -8,10 +8,11 @@ class StatusUpdate(BaseModel):
     status: str
 
 @router.get("/api/videos")
-def get_all_videos():
+def get_all_videos(page: int = 1, limit: int = 10):
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM videos")
+        offset = (page - 1) * limit
+        cursor.execute("SELECT * FROM videos LIMIT ? OFFSET ?", (limit, offset))
         rows = cursor.fetchall()
         if not rows:
             raise HTTPException(status_code=404, detail="No videos found")
@@ -19,12 +20,20 @@ def get_all_videos():
         return [dict(row) for row in rows]
 
 @router.get("/api/videos/{status}")
-def get_specific_videos(status: str):
+def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None):
     with get_db() as conn:
         if status not in ["pending", "confirmed", "rejected", "ready", "optimized", "accepted", "skipped", "failed", "replaced"]:
             raise HTTPException(status_code=400, detail="Invalid status")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM videos WHERE status = ?", (status,))
+        offset = (page - 1) * limit
+        
+        if codec:
+            cursor.execute("SELECT * FROM videos WHERE status = ? AND codec = ? LIMIT ? OFFSET ?", 
+                         (status, codec, limit, offset))
+        else:
+            cursor.execute("SELECT * FROM videos WHERE status = ? LIMIT ? OFFSET ?", 
+                         (status, limit, offset))
+            
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
