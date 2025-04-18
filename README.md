@@ -23,20 +23,21 @@ This project automatically scans a directory for videos, extracts their metadata
 /data/video_db.sqlite   => SQLite database
 
 📦 docker-compose.yml
-├── backend/           => FastAPI server
-│   ├── db.py          => DB setup
-│   ├── main.py        => main entry point
-│   └── routes.py      => API routes
+├── backend/               => FastAPI server
+│   ├── db.py              => Core database connection handling
+│   ├── db_operations.py   => High-level database operations
+│   ├── main.py            => main entry point
+│   └── routes.py          => API routes
 ├── workers/
-│   ├── scanner.py     => Scans videos directory
-│   ├── prepare.py     => Calls AI API
-│   ├── processor.py   => Runs ffmpeg
-│   ├── approver.py    => Auto approve to process and replace if set in ENV
-│   └── mover.py       => Handles file replacement
-├── frontend/          => React + Vite UI
-├── nginx/             => Nginx configuration
-│   └── default.conf   => Default nginx site config
-└── entrypoint.sh/     => Entrypoint for docker container start
+│   ├── scanner.py         => Scans videos directory
+│   ├── prepare.py         => Calls AI API
+│   ├── processor.py       => Runs ffmpeg
+│   ├── approver.py        => Auto approve to process and replace if set in ENV
+│   └── mover.py           => Handles file replacement
+├── frontend/              => React + Vite UI
+├── nginx/                 => Nginx configuration
+│   └── default.conf       => Default nginx site config
+└── entrypoint.sh/         => Entrypoint for docker container start
 ```
 
 ---
@@ -166,13 +167,62 @@ ffmpeg -i input.mp4 -vcodec libx265 -crf 28 output.mp4
 
 ---
 
-## 🐛 Debugging
+## 🗄️ Database Concurrency Handling
 
-- Logs are available in each container
-- Backend has Swagger API for manual testing
-- DB stored at `/data/video_db.sqlite`
+The system uses SQLite with enhanced concurrency support to handle multiple workers accessing the database simultaneously:
 
----
+### Features
+
+- 📝 Write-Ahead Logging (WAL) mode for better concurrency
+- 🔄 Connection pooling with proper timeout settings
+- 🔒 Thread-safe database operations
+- 🔁 Automatic retry mechanism for locked database scenarios
+- ⏰ Configurable timeouts and retry settings
+
+### Environment Variables
+
+```env
+DB_TIMEOUT=30          # Database operation timeout in seconds
+DB_MAX_RETRIES=3       # Maximum number of retries for locked database
+DB_RETRY_DELAY=0.1     # Delay between retries in seconds
+PROCESS_RETRY_DELAY=30 # Delay between processing retries
+```
+
+### Concurrency Features
+
+1. **Connection Management**
+   - Pooled connections with proper cleanup
+   - Automatic connection retry on failures
+   - Configurable timeout settings
+
+2. **Transaction Handling**
+   - Proper transaction boundaries
+   - Automatic rollback on errors
+   - Write-ahead logging for better concurrency
+
+3. **Error Handling**
+   - Graceful handling of database locks
+   - Exponential backoff for retries
+   - Detailed error logging
+
+4. **Worker Integration**
+   - Standardized database access layer
+   - Consistent error handling across workers
+   - Proper resource cleanup
+
+### Best Practices
+
+- Use the `db_operations` module for all database operations
+- Implement proper error handling and retries
+- Keep transactions as short as possible
+- Monitor database locks and timeouts
+- Use appropriate isolation levels
+
+For debugging database issues:
+- Check the logs for lock conflicts
+- Monitor transaction durations
+- Review retry patterns
+- Adjust timeout and retry settings as needed
 
 ## 📦 Build Notes
 
@@ -191,3 +241,4 @@ MIT — free to use and modify.
 ## 🙌 Credits
 
 Built by Tinkeshwar Singh & ChatGPT 💡
+

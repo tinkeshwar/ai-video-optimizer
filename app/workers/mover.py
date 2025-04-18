@@ -3,40 +3,18 @@
 import os
 import shutil
 import time
-import sqlite3
-from sqlite3 import Row
 import logging
+from backend.db_operations import (
+    get_accepted_records,
+    update_record_status
+)
 
-DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 REPLACE_BATCH_SIZE = int(os.getenv("REPLACE_BATCH_SIZE", 5))  # Default batch size
 REPLACE_INTERVAL = int(os.getenv("REPLACE_INTERVAL", 10))     # Sleep between batches
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
 logger = logging.getLogger(__name__)
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = Row
-    return conn
-
-def get_accepted_records(limit: int):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM videos WHERE status = 'accepted' LIMIT ?",
-            (limit,)
-        )
-        return cursor.fetchall()
-
-def update_record_status(video_id: int, status: str):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE videos SET status = ? WHERE id = ?",
-            (status, video_id)
-        )
-        conn.commit()
 
 def replace_files(original_path: str, optimized_path: str, video_id: int) -> bool:
     try:

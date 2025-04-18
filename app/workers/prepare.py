@@ -5,15 +5,16 @@ import os
 import platform
 import subprocess
 import time
-from contextlib import contextmanager
-from sqlite3 import Row, connect
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import re
 from openai import OpenAI
 import logging
+from backend.db_operations import (
+    get_confirmed_videos,
+    update_video_command
+)
 
 # Environment Config
-DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 AI_BATCH_SIZE = int(os.getenv("AI_BATCH_SIZE", 3))
 AI_INTERVAL = int(os.getenv("AI_INTERVAL", 10))
@@ -25,14 +26,6 @@ logger = logging.getLogger(__name__)
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
-@contextmanager
-def get_db():
-    conn = connect(DB_PATH)
-    conn.row_factory = Row
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 def get_system_info() -> Dict[str, str]:
     info = {
@@ -106,14 +99,6 @@ def get_system_info() -> Dict[str, str]:
     return info
 
 
-def get_confirmed_videos(limit: int) -> List[Dict]:
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM videos WHERE status = 'confirmed' LIMIT ?", (limit,)
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
 def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
     prompt = f"""
         Here is the metadata of a video file:
@@ -152,15 +137,6 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
         logger.error(f"[AI Error] {str(e)}")
         return None
 
-def update_video(video_id: int, command: str) -> None:
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE videos SET ai_command = ?, status = 'ready' WHERE id = ?",
-            (command, video_id)
-        )
-        conn.commit()
-
 def process_batch():
     videos = get_confirmed_videos(AI_BATCH_SIZE)
     if not videos:
@@ -174,7 +150,7 @@ def process_batch():
         command = send_to_ai(video["ffprobe_data"], system_info)
         if command:
             command = extract_ffmpeg_command(command)
-            update_video(video["id"], command)
+            update_video_command(video["id"], command)
             logger.info(f"[Saved] AI command saved for video ID: {video['id']}")
         else:
             logger.warning(f"[Skipped] AI command failed for video ID: {video['id']}")
