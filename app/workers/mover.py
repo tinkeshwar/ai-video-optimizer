@@ -5,8 +5,8 @@ import shutil
 import time
 import logging
 from backend.db_operations import (
-    get_accepted_records,
-    update_record_status
+    get_videos_by_status,
+    update_video_status
 )
 
 REPLACE_BATCH_SIZE = int(os.getenv("REPLACE_BATCH_SIZE", 5))  # Default batch size
@@ -20,27 +20,27 @@ def replace_files(original_path: str, optimized_path: str, video_id: int) -> boo
     try:
         if not os.path.exists(original_path):
             logger.error(f"[Missing] Original file does not exist: {original_path}")
-            update_record_status(video_id, 'failed')
+            update_video_status(video_id, 'failed')
             return False
 
         if not os.path.exists(optimized_path):
             logger.error(f"[Missing] Optimized file does not exist: {optimized_path}")
-            update_record_status(video_id, 'failed')
+            update_video_status(video_id, 'failed')
             return False
 
         os.remove(original_path)
         shutil.move(optimized_path, original_path)
-        update_record_status(video_id, 'replaced')
+        update_video_status(video_id, 'replaced')
         logger.info(f"[Replaced] {original_path}")
         return True
 
     except Exception as e:
         logger.error(f"[Error] Failed to replace {original_path}: {e}")
-        update_record_status(video_id, 'failed')
+        update_video_status(video_id, 'failed')
         return False
 
 def process_batch():
-    videos = get_accepted_records(REPLACE_BATCH_SIZE)
+    videos = get_videos_by_status('accepted', REPLACE_BATCH_SIZE)
     if not videos:
         logger.info("No accepted videos to process.")
         return

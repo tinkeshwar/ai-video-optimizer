@@ -5,7 +5,7 @@ from pathlib import Path
 from time import sleep
 from typing import Optional, Tuple, Dict, Any
 from backend.db_operations import (
-    fetch_one,
+    fetch,
     execute_with_retry,
     DatabaseError
 )
@@ -25,8 +25,11 @@ def get_next_ready_video() -> Optional[Dict[str, Any]]:
     Uses the new database operations module with proper concurrency handling.
     """
     try:
-        return fetch_one(
-            "SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1"
+        return fetch(
+            "SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1",
+            None,
+            None,
+            True
         )
     except DatabaseError as e:
         logger.error(f"Error fetching next ready video: {e}")

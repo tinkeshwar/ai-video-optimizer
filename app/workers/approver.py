@@ -2,8 +2,7 @@ import os
 import time
 import logging
 from backend.db_operations import (
-    get_pending_videos,
-    get_optimized_videos,
+    get_videos_by_status,
     update_status_of_multiple_videos
 )
 
@@ -22,7 +21,7 @@ def confirm_pending_videos():
         logger.info("Auto confirmation is disabled. Skipping confirmation.")
         return
 
-    pending_videos = get_pending_videos(BATCH_SIZE)
+    pending_videos = get_videos_by_status('pending', BATCH_SIZE)
     if not pending_videos:
         logger.info("No pending videos to confirm.")
         return
@@ -38,7 +37,7 @@ def accept_optimized_videos():
         logger.info("Auto acceptance is disabled. Skipping optimization acceptance.")
         return
 
-    optimized_videos = get_optimized_videos(BATCH_SIZE)
+    optimized_videos = get_videos_by_status('optimized', BATCH_SIZE)
     if not optimized_videos:
         logger.info("No optimized videos to accept.")
         return

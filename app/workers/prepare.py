@@ -10,7 +10,7 @@ import re
 from openai import OpenAI
 import logging
 from backend.db_operations import (
-    get_confirmed_videos,
+    get_videos_by_status,
     update_video_command
 )
 
@@ -138,7 +138,7 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
         return None
 
 def process_batch():
-    videos = get_confirmed_videos(AI_BATCH_SIZE)
+    videos = get_videos_by_status('confirmed', AI_BATCH_SIZE)
     if not videos:
         logger.info("No confirmed videos to process.")
         return
