@@ -195,7 +195,7 @@ def transaction(retries: int = None):
 
 def get_confirmed_videos(limit: int) -> List[Dict[str, Any]]:
     """
-    Get videos with 'ready' status, ordered by created_at.
+    Get videos with 'confirmed' status, ordered by created_at.
 
     Args:
         limit: Maximum number of videos to return
@@ -204,7 +204,7 @@ def get_confirmed_videos(limit: int) -> List[Dict[str, Any]]:
         List of dictionaries containing video data
     """
     return fetch_all(
-        "SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT ?",
+        "SELECT * FROM videos WHERE status = 'confirmed' ORDER BY created_at ASC LIMIT ?",
         (limit,)
     )
 
@@ -217,7 +217,7 @@ def update_video_command(video_id: int, ai_command: str) -> None:
         ai_command: AI command to update
     """
     execute_with_retry(
-        "UPDATE videos SET ai_command = ?, status = 'confirmed' WHERE id = ?",
+        "UPDATE videos SET ai_command = ?, status = 'ready' WHERE id = ?",
         (ai_command, video_id)
     )
 
