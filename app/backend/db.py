@@ -112,6 +112,7 @@ def init_db():
 
                 add_column_if_not_exists("videos", "original_codec", "TEXT")
                 add_column_if_not_exists("videos", "new_codec", "TEXT")
+                add_column_if_not_exists("videos", "updated_at", "TEXT")
 
                 # Create indexes for better performance
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")

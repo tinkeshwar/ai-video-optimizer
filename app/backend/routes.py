@@ -13,13 +13,15 @@ VALID_STATUSES = [
 ]
 
 def execute_query(query, params=(), fetch_all=True):
-    """Helper function to execute a query and fetch results."""
+    """Helper function to execute a query and fetch results or affected rows."""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
-        result = cursor.fetchall() if fetch_all else cursor.fetchone()
-        conn.close()
-        return result
+        if query.strip().lower().startswith(("update", "delete", "insert")):
+            conn.commit()
+            return cursor.rowcount
+        return cursor.fetchall() if fetch_all else cursor.fetchone()
+
 
 @router.get("/api/videos")
 def get_all_videos(page: int = 1, limit: int = 10):
@@ -71,7 +73,7 @@ def update_video_status(video_id: int, update: StatusUpdate):
     rows_affected = execute_query(
         "UPDATE videos SET status = ? WHERE id = ?", (update.status, video_id), fetch_all=False
     )
-    if rows_affected == 0:
+    if rows_affected is None or rows_affected == 0:
         raise HTTPException(status_code=404, detail="Video not found")
     return {"message": f"Video {video_id} status updated to {update.status}"}
 
