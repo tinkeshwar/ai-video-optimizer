@@ -25,6 +25,17 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
         if status not in ["pending", "confirmed", "rejected", "ready", "optimized", "accepted", "skipped", "failed", "replaced"]:
             raise HTTPException(status_code=400, detail="Invalid status")
         cursor = conn.cursor()
+        
+        # Get total count for pagination
+        if codec:
+            cursor.execute("SELECT COUNT(*) as count FROM videos WHERE status = ? AND codec = ?", 
+                         (status, codec))
+        else:
+            cursor.execute("SELECT COUNT(*) as count FROM videos WHERE status = ?", 
+                         (status,))
+        total_count = cursor.fetchone()['count']
+        total_pages = (total_count + limit - 1) // limit
+        
         offset = (page - 1) * limit
         
         if codec:
@@ -36,7 +47,13 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
             
         rows = cursor.fetchall()
         conn.close()
-        return [dict(row) for row in rows]
+        return {
+            "list": [dict(row) for row in rows],
+            "page": page,
+            "total_pages": total_pages,
+            "requested_per_page": limit
+        }
+    
 
 @router.post("/api/videos/{video_id}/status")
 def update_video_status(video_id: int, update: StatusUpdate):

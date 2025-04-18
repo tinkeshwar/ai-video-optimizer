@@ -12,7 +12,7 @@ function FileTable({ status}) {
   const [files, setFiles] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 50;
 
   useEffect(() => {
     fetchFiles();
@@ -21,8 +21,8 @@ function FileTable({ status}) {
   const fetchFiles = async () => {
     try {
       const response = await axios.get(`/api/videos/${status}?page=${currentPage}&limit=${itemsPerPage}`);
-      setFiles(response.data);
-      setTotalPages(Math.ceil(response.data.length / itemsPerPage));
+      setFiles(response.data.list);
+      setTotalPages(response.data.total_pages);
     } catch (err) {
       console.error('Error fetching files:', err);
     }
