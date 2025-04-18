@@ -98,6 +98,7 @@ def init_db():
                         original_codec TEXT,
                         new_codec TEXT,
                         status TEXT DEFAULT 'pending',
+                        progress TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
@@ -113,6 +114,7 @@ def init_db():
                 add_column_if_not_exists("videos", "original_codec", "TEXT")
                 add_column_if_not_exists("videos", "new_codec", "TEXT")
                 add_column_if_not_exists("videos", "updated_at", "TEXT")
+                add_column_if_not_exists("videos", "progress", "TEXT")
 
                 # Create indexes for better performance
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")

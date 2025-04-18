@@ -35,10 +35,10 @@ def get_next_ready_video() -> Optional[Dict[str, Any]]:
         logger.error(f"Error fetching next ready video: {e}")
         return None
 
-def run_ffmpeg(input_path: str, command_str: str, output_path: str) -> Tuple[bool, str]:
+def run_ffmpeg(input_path: str, command_str: str, output_path: str, video_id: int) -> Tuple[bool, str]:
     """
     Run ffmpeg command to process the video.
-    Returns success status and output codec.
+    Records progress to the database and returns success status and output codec.
     """
     try:
         output_path = Path(output_path)
@@ -49,7 +49,33 @@ def run_ffmpeg(input_path: str, command_str: str, output_path: str) -> Tuple[boo
         command_list[command_list.index("output.mp4")] = str(output_path)
 
         logger.info(f"Running ffmpeg: {' '.join(command_list)}")
-        subprocess.run(command_list, check=True, capture_output=True, text=True)
+
+        process = subprocess.Popen(
+            command_list,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        for line in process.stderr:
+            if "frame=" in line:
+                try:
+                    execute_with_retry(
+                        """
+                        UPDATE videos
+                        SET progress = ?
+                        WHERE id = ?
+                        """,
+                        (line.strip(), video_id)
+                    )
+                except DatabaseError as db_err:
+                    logger.error(f"Failed to update progress for video {video_id}: {db_err}")
+
+        process.wait()
+
+        if process.returncode != 0:
+            logger.error(f"ffmpeg failed with return code {process.returncode}")
+            return False, ""
 
         codec = subprocess.run(
             [
@@ -103,13 +129,7 @@ def process_video(video: Dict[str, Any]) -> bool:
         return False
 
     try:
-        # Mark video as processing
-        execute_with_retry(
-            "UPDATE videos SET status = 'processing' WHERE id = ?",
-            (video["id"],)
-        )
-
-        success, codec = run_ffmpeg(str(input_path), video["ai_command"], str(output_path))
+        success, codec = run_ffmpeg(str(input_path), video["ai_command"], str(output_path), video["id"])
         if success:
             try:
                 optimized_size = output_path.stat().st_size
