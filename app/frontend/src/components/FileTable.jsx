@@ -120,6 +120,7 @@ function FileTable({ status }) {
       const expectedFileSize = targetBitrate ? ((duration * targetBitrate) / 8) : 0;
 
       return {
+        runtime: formatTime(duration),
         progressPercent: Number(progressPercent),
         estimateTimeRemaining: formatTime(remainingSeconds),
         expectedFileSize: expectedFileSize ? byteToGigabyte(expectedFileSize) : 'NA',
@@ -148,11 +149,12 @@ function FileTable({ status }) {
           {error}
         </Flex>
       ) : (
-        <Table.Root size="1">
+        <Table.Root size="1" variant="surface">
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell minWidth="70%">Name</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Codec</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Runtime</Table.ColumnHeaderCell>
               {status === 'optimized' && <Table.ColumnHeaderCell>Compressed</Table.ColumnHeaderCell>}
               <Table.ColumnHeaderCell>Size</Table.ColumnHeaderCell>
               {status === 'ready' && <Table.ColumnHeaderCell>Progress</Table.ColumnHeaderCell>}
@@ -160,8 +162,13 @@ function FileTable({ status }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {files.map((file) => (
-              <Table.Row key={file.id}>
+            {files.map((file, index) => (
+              <Table.Row
+                key={file.id}
+                style={{
+                  backgroundColor: index % 2 === 0 ? '#f9fafb' : 'transparent',
+                }}
+              >
                 <Table.Cell>
                   {file.filename}{' '}
                   <Tooltip content={`Path: ${file.filepath}`}>
@@ -171,6 +178,9 @@ function FileTable({ status }) {
                 <Table.Cell>
                   {file.original_codec}
                   {file.new_codec && ` | ${file.new_codec}`}
+                </Table.Cell>
+                <Table.Cell>
+                  {file.ffprobe_data ? calculateProgressAndETA(file.ffprobe_data, file.progress).runtime : 'NA'}
                 </Table.Cell>
                 {status === 'optimized' && <Table.Cell>{compressionPercentage(file.original_size, file.optimized_size)}</Table.Cell>}
                 <Table.Cell>

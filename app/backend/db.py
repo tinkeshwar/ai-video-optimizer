@@ -94,6 +94,7 @@ def init_db():
                         ai_command TEXT,
                         original_size INTEGER,
                         optimized_size INTEGER,
+                        estimated_size INTEGER,
                         optimized_path TEXT,
                         original_codec TEXT,
                         new_codec TEXT,
@@ -117,6 +118,7 @@ def init_db():
                 add_column_if_not_exists("videos", "updated_at", "TEXT")
                 add_column_if_not_exists("videos", "progress", "TEXT")
                 add_column_if_not_exists("videos", "system_info", "TEXT")
+                add_column_if_not_exists("videos", "estimated_size", "INTEGER")
 
                 # Create indexes for better performance
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")
