@@ -23,6 +23,7 @@ const Filters = ({
             <Select.Item value="800MB">{'> 800MB'}</Select.Item>
             <Select.Item value="1GB">{'> 1GB'}</Select.Item>
             <Select.Item value="1.5GB">{'> 1.5GB'}</Select.Item>
+            <Select.Item value="2GB">{'> 2GB'}</Select.Item>
             <Select.Item value="2.5GB">{'> 2.5GB'}</Select.Item>
             <Select.Item value="3GB">{'> 3GB'}</Select.Item>
           </Select.Content>
