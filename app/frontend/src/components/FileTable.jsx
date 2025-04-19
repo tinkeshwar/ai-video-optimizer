@@ -196,7 +196,7 @@ function FileTable({ status }) {
                   {file.new_codec && ` | ${file.new_codec}`}
                 </Table.Cell>
                 <Table.Cell>
-                  {file.ffprobe_data ? calculateProgressAndETA(file.ffprobe_data, file.progress).runtime : 'NA'}
+                  {file.ffprobe_data ? calculateRuntime(file.ffprobe_data) : 'NA'}
                 </Table.Cell>
                 {status === 'optimized' && <Table.Cell>{compressionPercentage(file.original_size, file.optimized_size)}</Table.Cell>}
                 <Table.Cell>
