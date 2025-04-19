@@ -49,12 +49,12 @@ def process_batch():
         logger.info(f"Processing: {video['filename']}")
         replace_files(video["filepath"], video["optimized_path"], video["id"])
 
-def remove_rejected_files():
-    rejected_videos = get_videos_by_status('rejected')
-    if not rejected_videos:
-        logger.info("No rejected videos to remove.")
+def remove_skipped_files():
+    skipped_videos = get_videos_by_status('skipped')
+    if not skipped_videos:
+        logger.info("No skipped videos to remove.")
         return
-    for video in rejected_videos:
+    for video in skipped_videos:
         if os.path.exists(video["optimized_path"]):
             os.remove(video["optimized_path"])
             logger.info(f"[Removed] {video['optimized_path']}")
@@ -64,7 +64,7 @@ def main():
     while True:
         try:
             process_batch()
-            remove_rejected_files()
+            remove_skipped_files()
         except Exception as e:
             logger.error(f"[Fatal Error] {e}")
         time.sleep(REPLACE_INTERVAL)
