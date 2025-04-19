@@ -112,6 +112,7 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
             - Only return a single-line ffmpeg command starting with `ffmpeg`.
             - Use `input.mp4` as input and `output.mp4` as output.
             - In file exist in output command should overwrite the file.
+            - Do not include any other text or explanations.
 
         Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
     """
@@ -133,7 +134,18 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
 def send_to_ai_again(video: Dict, system_info: Dict) -> Optional[str]:
     """Send video metadata and system info to OpenAI to generate an ffmpeg command."""
     prompt = f"""
+        Here is the ffprobe data of the video:
+        {json.dumps(video["ffprobe_data"], indent=2)}
+        Here is the system info:
+        {json.dumps(system_info, indent=2)}
+
         You have already generated a command for this video, but it is not efficient enough.
+
+        Here is the last command:
+        {video["ai_command"]}     
+        Here is the ffmpeg command output:
+        {video["progress"]}
+
         The estimated size is too large compared to the original size.
         The original size is {video["original_size"]} bytes, and the estimated size is {video["estimated_size"]} bytes.
         The command you generated is not efficient enough, so re-generate the command.
@@ -148,15 +160,9 @@ def send_to_ai_again(video: Dict, system_info: Dict) -> Optional[str]:
             - Only return a single-line ffmpeg command starting with `ffmpeg`.
             - Use `input.mp4` as input and `output.mp4` as output.
             - In file exist in output command should overwrite the file.
+            - Do not include any other text or explanations.
+
         Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
-        Here is the ffprobe data of the video:
-        {json.dumps(video["ffprobe_data"], indent=2)}
-        Here is the system info:
-        {json.dumps(system_info, indent=2)}
-        Here is the last command:
-        {video["ai_command"]}     
-        Here is the ffmpeg command output:
-        {video["progress"]}
     """
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -226,6 +232,7 @@ def main():
     while True:
         try:
             process_batch()
+            re_process_batch()
         except Exception as e:
             logger.error(f"[Main Error] {e}")
         time.sleep(AI_INTERVAL)
