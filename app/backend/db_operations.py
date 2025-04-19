@@ -102,13 +102,13 @@ def get_videos_by_status(status: str, limit: Optional[int] = None) -> List[Dict[
         params.append(limit)
     return fetch(query, tuple(params))
 
-def update_video_command(video_id: int, ai_command: str) -> None:
+def update_video_command_and_system_info(video_id: int, ai_command: str, system_info: str) -> None:
     """
     Update video record with AI command.
     """
     execute_with_retry(
-        "UPDATE videos SET ai_command = ?, status = 'ready' WHERE id = ?",
-        (ai_command, video_id)
+        "UPDATE videos SET ai_command = ?, system_info=?, status = 'ready' WHERE id = ?",
+        (ai_command, system_info, video_id)
     )
 
 def update_status_of_multiple_videos(video_ids: List[int], status: str) -> None:

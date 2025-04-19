@@ -11,7 +11,7 @@ from openai import OpenAI
 import logging
 from backend.db_operations import (
     get_videos_by_status,
-    update_video_command
+    update_video_command_and_system_info
 )
 
 # Environment Config
@@ -103,7 +103,6 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
     prompt = f"""
         Here is the metadata of a video file:
         ffprobe data: {json.dumps(ffprobe_data, indent=2)}
-
         System info: {json.dumps(system_info, indent=2)}
 
         Your task is to generate the most optimal ffmpeg command to compress this video with the following requirements:
@@ -112,7 +111,7 @@ def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
             - Use the **x265** codec if supported.
             - Maintain the original **resolution** and **frame rate** exactly.
             - Use **hardware acceleration** (e.g., NVENC, VAAPI, or QSV) if available in system_info.
-            - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22 or better).
+            - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22-28 based on ffprobe_data).
             - Audio should be copied without re-encoding.
             - The result should be web-streaming friendly (i.e., add `-movflags +faststart`).
             - Only return a single-line ffmpeg command starting with `ffmpeg`.
@@ -150,7 +149,7 @@ def process_batch():
         command = send_to_ai(video["ffprobe_data"], system_info)
         if command:
             command = extract_ffmpeg_command(command)
-            update_video_command(video["id"], command)
+            update_video_command_and_system_info(video["id"], command, json.dumps(system_info, indent=2))
             logger.info(f"[Saved] AI command saved for video ID: {video['id']}")
         else:
             logger.warning(f"[Skipped] AI command failed for video ID: {video['id']}")

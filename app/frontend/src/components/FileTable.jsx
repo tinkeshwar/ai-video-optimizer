@@ -99,13 +99,14 @@ function FileTable({ status }) {
 
       const timeMatch = ffmpegOut.match(/time=(\d+):(\d+):(\d+\.\d+)/);
       const speedMatch = ffmpegOut.match(/speed=([\d.]+)x/);
+      const bitrateMatch = ffmpegOut.match(/bitrate=\s*([\d.]+)kbits\/s/);
 
-      if (!timeMatch || !speedMatch) return { progressPercent: 0, estimateTimeRemaining: 'NA' };
+      if (!timeMatch || !speedMatch) return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA' };
 
       const [_, hh, mm, ss] = timeMatch;
       const currentTimeInSeconds = (+hh) * 3600 + (+mm) * 60 + (+ss);
       const speed = parseFloat(speedMatch[1]);
-
+      const targetBitrate = bitrateMatch ? parseFloat(bitrateMatch[1]) * 1000 : null;
       const progressPercent = ((currentTimeInSeconds / duration) * 100).toFixed(2);
       const remainingSeconds = (duration - currentTimeInSeconds) / speed;
 
@@ -116,12 +117,15 @@ function FileTable({ status }) {
         return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
       };
 
+      const expectedFileSize = targetBitrate ? ((duration * targetBitrate) / 8) : 0;
+
       return {
         progressPercent: Number(progressPercent),
         estimateTimeRemaining: formatTime(remainingSeconds),
+        expectedFileSize: expectedFileSize ? byteToGigabyte(expectedFileSize) : 'NA',
       };
     } catch {
-      return { progressPercent: 0, estimateTimeRemaining: 'NA' };
+      return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA' };
     }
   };
 
@@ -180,7 +184,7 @@ function FileTable({ status }) {
                       value={calculateProgressAndETA(file.ffprobe_data, file.progress).progressPercent}
                       variant="classic"
                     />
-                    {calculateProgressAndETA(file.ffprobe_data, file.progress).estimateTimeRemaining}
+                    {calculateProgressAndETA(file.ffprobe_data, file.progress).estimateTimeRemaining} | {calculateProgressAndETA(file.ffprobe_data, file.progress).expectedFileSize}
                   </Table.Cell>
                 )}
                 {Object.keys(actionConfig).includes(status) && (
