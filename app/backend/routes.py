@@ -61,8 +61,17 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
         f"SELECT * FROM videos WHERE {where_clause} LIMIT ? OFFSET ?", params + [limit, offset]
     )
     
+    videos = []
+    for row in rows:
+        video = dict(row)
+        history = execute_query(
+            "SELECT * FROM status_history WHERE video_id = ? ORDER BY created_at ASC", (video['id'],)
+        )
+        video['history'] = [dict(h) for h in history]
+        videos.append(video)
+    
     return {
-        "list": [dict(row) for row in rows],
+        "list": videos,
         "page": page,
         "total_pages": total_pages,
         "requested_per_page": limit
@@ -70,11 +79,20 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
 
 @router.post("/api/videos/{video_id}/status")
 def update_video_status(video_id: int, update: StatusUpdate):
+    if update.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
     rows_affected = execute_query(
         "UPDATE videos SET status = ? WHERE id = ?", (update.status, video_id), fetch_all=False
     )
     if rows_affected is None or rows_affected == 0:
         raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Update the status history
+    execute_query(
+        "INSERT INTO status_history (video_id, status, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)", (video_id, update.status)
+    )
+    
     return {"message": f"Video {video_id} status updated to {update.status}"}
 
 @router.get("/api/videos/status/count")

@@ -80,7 +80,7 @@ def init_db():
                 # Begin transaction
                 cursor.execute("BEGIN EXCLUSIVE")
 
-                # Create the table if it doesn't exist
+                # Create the videos table if it doesn't exist
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS videos (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,8 +102,19 @@ def init_db():
                     )
                 ''')
 
+                # Create the status_history table if it doesn't exist
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS status_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        video_id INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        comment TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+                    )
+                ''')
+
                 # Ensure the existing columns are added only once
-                # Using a more robust approach to check for column existence
                 def add_column_if_not_exists(table: str, column: str, type_: str):
                     columns = cursor.execute(f"PRAGMA table_info({table})").fetchall()
                     if not any(col[1] == column for col in columns):
@@ -111,7 +122,7 @@ def init_db():
 
                 add_column_if_not_exists("videos", "original_codec", "TEXT")
                 add_column_if_not_exists("videos", "new_codec", "TEXT")
-                add_column_if_not_exists("videos", "updated_at", "TEXT")
+                add_column_if_not_exists("videos", "updated_at", "DATETIME")
                 add_column_if_not_exists("videos", "progress", "TEXT")
                 add_column_if_not_exists("videos", "system_info", "TEXT")
                 add_column_if_not_exists("videos", "estimated_size", "INTEGER")
@@ -120,16 +131,8 @@ def init_db():
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON videos(status)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON videos(created_at)")
-
-                # Create trigger to update updated_at timestamp
-                cursor.execute('''
-                    CREATE TRIGGER IF NOT EXISTS update_videos_timestamp 
-                    AFTER UPDATE ON videos
-                    BEGIN
-                        UPDATE videos SET updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = NEW.id;
-                    END;
-                ''')
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_status_history_video_id ON status_history(video_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_status_history_created_at ON status_history(created_at)")
 
                 # Commit changes to the database
                 conn.commit()

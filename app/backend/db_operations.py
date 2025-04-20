@@ -48,21 +48,25 @@ def fetch(query: str, params: Tuple = None, retries: int = None, fetch_one: bool
 
 def insert_video(filepath: str, filename: str, metadata: str = None, codec: str = None, size: int = None) -> int:
     """
-    Insert a new video record into the database.
+    Insert a new video record into the database and log the status as 'pending' in status_history.
     """
     query = """
         INSERT INTO videos (filepath, filename, ffprobe_data, original_codec, original_size)
         VALUES (?, ?, ?, ?, ?)
     """
-    with get_db() as conn:
+    with transaction() as conn:
         cursor = conn.cursor()
         try:
+            # Insert the video record
             cursor.execute(query, (filepath, filename, metadata, codec, size))
             video_id = cursor.lastrowid
-            conn.commit()
+            # Log the initial status as 'pending' in status_history
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, created_at) VALUES (?, 'pending', CURRENT_TIMESTAMP)",
+                (video_id,)
+            )
             return video_id
         except sqlite3.Error as e:
-            conn.rollback()
             logger.error(f"Failed to insert video record: {e}")
             raise DatabaseError(f"Failed to insert video: {e}")
         finally:
@@ -94,28 +98,57 @@ def get_next_ready_video() -> Optional[Dict[str, Any]]:
 
 def update_video_command_and_system_info(video_id: int, ai_command: str, system_info: str) -> None:
     """
-    Update video record with AI command.
+    Update video record with AI command and system info, and log the status change in status_history.
     """
-    execute_with_retry(
-        "UPDATE videos SET ai_command = ?, system_info=?, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        (ai_command, system_info, video_id)
-    )
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            # Update the video record
+            cursor.execute(
+                "UPDATE videos SET ai_command = ?, system_info = ?, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (ai_command, system_info, video_id)
+            )
+            # Insert status change into status_history
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, created_at) VALUES (?, 'ready', CURRENT_TIMESTAMP)",
+                (video_id,)
+            )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update video command and system info: {e}")
+            raise DatabaseError(f"Failed to update video command and system info: {e}")
+        finally:
+            cursor.close()
 
 def update_status_of_multiple_videos(video_ids: List[int], status: str) -> None:
     """
-    Update the status of multiple videos.
+    Update the status of multiple videos and log the status change in status_history.
     """
     if not video_ids:
         return
     placeholders = ', '.join('?' for _ in video_ids)
-    execute_with_retry(
-        f"UPDATE videos SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-        (status, *video_ids)
-    )
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            # Update the status of videos
+            cursor.execute(
+                f"UPDATE videos SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
+                (status, *video_ids)
+            )
+            # Insert status changes into status_history
+            for video_id in video_ids:
+                cursor.execute(
+                    "INSERT INTO status_history (video_id, status, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    (video_id, status)
+                )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update status of multiple videos: {e}")
+            raise DatabaseError(f"Failed to update status of multiple videos: {e}")
+        finally:
+            cursor.close()
 
 def update_video_status(video_id: int, status: str, **kwargs) -> None:
     """
-    Update video status and optional fields.
+    Update video status, optional fields, and log the status change in status_history.
     """
     fields = ["status = ?"]
     params = [status]
@@ -124,7 +157,21 @@ def update_video_status(video_id: int, status: str, **kwargs) -> None:
         params.append(value)
     query = f"UPDATE videos SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     params.append(video_id)
-    execute_with_retry(query, tuple(params))
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            # Update the video record
+            cursor.execute(query, tuple(params))
+            # Insert status change into status_history
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (video_id, status)
+            )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update video status: {e}")
+            raise DatabaseError(f"Failed to update video status: {e}")
+        finally:
+            cursor.close()
 
 def update_video_progress(video_id: int, progress: str) -> None:
     """
@@ -138,11 +185,28 @@ def update_video_estimated_size(video_id: int, estimated_size: int) -> None:
     """
     execute_with_retry("UPDATE videos SET estimated_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (estimated_size, video_id))
 
-def update_final_output(video_id: int, output_path: str, codec: str, optimized_size: int,) -> None:
+def update_final_output(video_id: int, output_path: str, codec: str, optimized_size: int) -> None:
     """
-    Update the final output path and codec of a video.
+    Update the final output path and codec of a video and log the status change in status_history.
     """
-    execute_with_retry("UPDATE videos SET optimized_size = ?, status = 'optimized', optimized_path = ?, new_codec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",  (optimized_size, output_path, codec, video_id))
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            # Update the video record
+            cursor.execute(
+                "UPDATE videos SET optimized_size = ?, status = 'optimized', optimized_path = ?, new_codec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (optimized_size, output_path, codec, video_id)
+            )
+            # Insert status change into status_history
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, created_at) VALUES (?, 'optimized', CURRENT_TIMESTAMP)",
+                (video_id,)
+            )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update final output: {e}")
+            raise DatabaseError(f"Failed to update final output: {e}")
+        finally:
+            cursor.close()
 
 @contextmanager
 def transaction(retries: int = None):
