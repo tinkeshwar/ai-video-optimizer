@@ -141,9 +141,13 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
         ) as process:
             for line in process.stderr:
                 line = line.strip()
-                execute_with_retry(SQL_QUERIES["update_progress"], (line, video_id))
                 if not line:
                     continue
+                
+                try:
+                    execute_with_retry(SQL_QUERIES["update_progress"], (line, video_id))
+                except DatabaseError as db_err:
+                    logger.error(f"Failed to store raw ffmpeg output for video {video_id}: {db_err}")
 
                 parsed = parse_ffmpeg_progress_line(line)
                 current_time = parsed["time"]
