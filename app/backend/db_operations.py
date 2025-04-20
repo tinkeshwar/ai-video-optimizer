@@ -72,19 +72,6 @@ def insert_video(filepath: str, filename: str, metadata: str = None, codec: str 
         finally:
             cursor.close()
 
-def update_video_status(video_id: int, status: str, **kwargs) -> None:
-    """
-    Update video status and optional fields.
-    """
-    fields = ["status = ?"]
-    params = [status]
-    for key, value in kwargs.items():
-        fields.append(f"{key} = ?")
-        params.append(value)
-    query = f"UPDATE videos SET {', '.join(fields)} WHERE id = ?"
-    params.append(video_id)
-    execute_with_retry(query, tuple(params))
-
 def get_video_by_path(filepath: str) -> Optional[Dict[str, Any]]:
     """
     Get video record by filepath.
@@ -102,12 +89,19 @@ def get_videos_by_status(status: str, limit: Optional[int] = None) -> List[Dict[
         params.append(limit)
     return fetch(query, tuple(params))
 
+
+def get_next_ready_video() -> Optional[Dict[str, Any]]:
+    """
+    Fetch the next video ready for processing from the database.
+    """
+    return fetch("SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1", fetch_one=True)
+
 def update_video_command_and_system_info(video_id: int, ai_command: str, system_info: str) -> None:
     """
     Update video record with AI command.
     """
     execute_with_retry(
-        "UPDATE videos SET ai_command = ?, system_info=?, status = 'ready' WHERE id = ?",
+        "UPDATE videos SET ai_command = ?, system_info=?, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (ai_command, system_info, video_id)
     )
 
@@ -119,9 +113,40 @@ def update_status_of_multiple_videos(video_ids: List[int], status: str) -> None:
         return
     placeholders = ', '.join('?' for _ in video_ids)
     execute_with_retry(
-        f"UPDATE videos SET status = ? WHERE id IN ({placeholders})",
+        f"UPDATE videos SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
         (status, *video_ids)
     )
+
+def update_video_status(video_id: int, status: str, **kwargs) -> None:
+    """
+    Update video status and optional fields.
+    """
+    fields = ["status = ?"]
+    params = [status]
+    for key, value in kwargs.items():
+        fields.append(f"{key} = ?")
+        params.append(value)
+    query = f"UPDATE videos SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    params.append(video_id)
+    execute_with_retry(query, tuple(params))
+
+def update_video_progress(video_id: int, progress: str) -> None:
+    """
+    Update the progress of a video.
+    """
+    execute_with_retry("UPDATE videos SET progress = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (progress, video_id))
+
+def update_video_estimated_size(video_id: int, estimated_size: int) -> None:
+    """
+    Update the estimated size of a video.
+    """
+    execute_with_retry("UPDATE videos SET estimated_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (estimated_size, video_id))
+
+def update_final_output(video_id: int, output_path: str, codec: str, optimized_size: int,) -> None:
+    """
+    Update the final output path and codec of a video.
+    """
+    execute_with_retry("UPDATE videos SET optimized_size = ?, status = 'optimized', optimized_path = ?, new_codec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",  (optimized_size, output_path, codec, video_id))
 
 @contextmanager
 def transaction(retries: int = None):
