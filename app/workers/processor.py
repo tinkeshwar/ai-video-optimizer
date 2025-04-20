@@ -141,6 +141,7 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
         ) as process:
             for line in process.stderr:
                 line = line.strip()
+                execute_with_retry(SQL_QUERIES["update_progress"], (line, video_id))
                 if not line:
                     continue
 
@@ -156,7 +157,6 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
                     try:
                         progress_text = f"time={current_time:.2f}s size={current_size/1024:.2f}KB"
                         if progress_text != last_progress:
-                            execute_with_retry(SQL_QUERIES["update_progress"], (progress_text, video_id))
                             last_progress = progress_text
                             last_update_time = now
                     except DatabaseError as db_err:
