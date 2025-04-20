@@ -2,7 +2,7 @@ import os
 import sqlite3
 import time
 from contextlib import contextmanager
-import logging
+from backend.utils import logger
 from typing import Optional
 from threading import Lock
 
@@ -10,10 +10,6 @@ DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))  # Default 30 seconds timeout
 MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", "3"))
 RETRY_DELAY = float(os.getenv("DB_RETRY_DELAY", "0.1"))  # 100ms default delay between retries
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
 
 # Global lock for synchronizing database initialization
 _init_lock = Lock()

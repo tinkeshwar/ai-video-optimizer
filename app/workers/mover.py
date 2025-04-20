@@ -3,7 +3,7 @@
 import os
 import shutil
 import time
-import logging
+from backend.utils import logger
 from backend.db_operations import (
     get_videos_by_status,
     update_video_status
@@ -11,10 +11,6 @@ from backend.db_operations import (
 
 REPLACE_BATCH_SIZE = int(os.getenv("REPLACE_BATCH_SIZE", 5))  # Default batch size
 REPLACE_INTERVAL = int(os.getenv("REPLACE_INTERVAL", 10))     # Sleep between batches
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
 
 def replace_files(original_path: str, optimized_path: str, video_id: int) -> bool:
     try:

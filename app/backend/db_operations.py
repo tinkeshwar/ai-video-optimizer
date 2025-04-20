@@ -2,15 +2,11 @@
 Database operations module providing standardized access to the SQLite database
 with proper concurrency handling.
 """
-import logging
 from typing import Dict, List, Optional, Any, Tuple
 import sqlite3
 from contextlib import contextmanager
-from .db import get_db
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
-
+from backend.db import get_db
+from backend.utils import logger
 class DatabaseError(Exception):
     """Custom exception for database operations."""
     pass

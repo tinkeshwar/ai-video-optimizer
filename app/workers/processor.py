@@ -1,6 +1,6 @@
 import os
 import subprocess
-import logging
+from backend.utils import logger
 from pathlib import Path
 from time import sleep
 from typing import Tuple, Dict, Any
@@ -10,21 +10,12 @@ from dataclasses import dataclass
 from functools import lru_cache
 from backend.db_operations import (
     get_next_ready_video,
-    execute_with_retry,
     update_video_progress,
     update_video_status,
     update_video_estimated_size,
     update_final_output,
     DatabaseError
-    )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p"
 )
-logger = logging.getLogger(__name__)
 
 @dataclass
 class Config:
@@ -35,6 +26,8 @@ class Config:
     min_reduction_ratio: float = float(os.getenv("MIN_REDUCTION_RATIO", "0.2"))
     sleep_interval: int = int(os.getenv("SLEEP_INTERVAL", "10"))
     max_retry_delay: int = int(os.getenv("MAX_RETRY_DELAY", "300"))
+    size_stability_tolerance: float = float(os.getenv("SIZE_STABILITY_TOLERANCE", "0.01"))  # 1% tolerance
+    size_check_window: int = int(os.getenv("SIZE_CHECK_WINDOW", "10"))  # Number of lines to check
 
 CONFIG = Config()
 
@@ -80,6 +73,8 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
 
         logger.info(f"Executing ffmpeg: {' '.join(command_list)}")
 
+        estimated_sizes = []  # Track last 10 estimated sizes
+
         with subprocess.Popen(
             command_list,
             stdout=subprocess.PIPE,
@@ -104,12 +99,25 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
                             estimated_final_size = (current_size / current_time) * total_duration
                             reduction_ratio = 1 - (estimated_final_size / original_size)
                             update_video_estimated_size(video_id, int(estimated_final_size))
-                            if reduction_ratio < CONFIG.min_reduction_ratio:
-                                logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
-                                process.terminate()
-                                process.wait(timeout=5)
-                                update_video_status(video_id, "re-confirmed")
-                                return False, ""
+
+                            # Track estimated sizes
+                            estimated_sizes.append(estimated_final_size)
+                            if len(estimated_sizes) > CONFIG.size_check_window:
+                                estimated_sizes.pop(0)
+
+                            # Check if last 10 sizes are stable and reduction ratio is too low
+                            if len(estimated_sizes) == CONFIG.size_check_window:
+                                max_size = max(estimated_sizes)
+                                min_size = min(estimated_sizes)
+                                if max_size > 0 and (max_size - min_size) / max_size <= CONFIG.size_stability_tolerance:
+                                    if reduction_ratio < CONFIG.min_reduction_ratio:
+                                        logger.info(f"Aborting: Stable estimated size {estimated_final_size/1024/1024:.2f}MB "
+                                                    f"with reduction ratio {reduction_ratio*100:.2f}% below threshold.")
+                                        process.terminate()
+                                        process.wait(timeout=5)
+                                        update_video_status(video_id, "re-confirmed")
+                                        return False, "", "ok"
+                                    
             except subprocess.TimeoutExpired:
                 logger.warning("Process termination timeout. Forcing kill.")
                 process.kill()
@@ -118,7 +126,7 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
             return_code = process.wait(timeout=10)
             if return_code != 0:
                 logger.error(f"ffmpeg failed with return code {return_code}")
-                return False, ""
+                return False, "", "not ok"
 
         codec = subprocess.run(
             [
@@ -131,15 +139,14 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
             check=True
         ).stdout.strip()
 
-        return True, codec
+        return True, codec, "ok"
 
     except subprocess.CalledProcessError as e:
         logger.error(f"ffmpeg subprocess error: {e.stderr}")
-        return False, ""
+        return False, "", "not ok"
     except Exception as e:
         logger.exception(f"Unexpected error in run_ffmpeg: {e}")
-        return False, ""
-
+        return False, "", "not ok"
 
 def process_video(video: Dict[str, Any]) -> bool:
     """Process a single video and handle its lifecycle."""
@@ -152,12 +159,15 @@ def process_video(video: Dict[str, Any]) -> bool:
         return False
 
     try:
-        success, codec = run_ffmpeg(str(input_path), str(output_path), video)
-        if success:
+        success, codec, status = run_ffmpeg(str(input_path), str(output_path), video)
+        if success and status == "ok":
             optimized_size = output_path.stat().st_size
             if update_final_output(video["id"], str(output_path), codec, optimized_size):
                 logger.info(f"Successfully optimized video: {input_path.name}")
                 return True
+        elif status == "ok":
+            logger.error(f"ffmpeg processing aborted for video due to threshold: {input_path.name}")
+            update_video_status(video["id"], "re-confirmed")
         else:
             logger.warning(f"Processing failed for video: {input_path.name}")
             update_video_status(video["id"], "failed")

@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+from backend.utils import logger
 from backend.db_operations import (
     get_videos_by_status,
     update_status_of_multiple_videos
@@ -11,10 +11,6 @@ CONFIRM_INTERVAL = int(os.getenv("CONFIRM_INTERVAL", 60))
 
 AUTO_CONFIRMED = os.getenv("AUTO_CONFIRMED", "false").lower() == "true"
 AUTO_ACCEPT = os.getenv("AUTO_ACCEPT", "false").lower() == "true"
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
 
 def confirm_pending_videos():
     if not AUTO_CONFIRMED:

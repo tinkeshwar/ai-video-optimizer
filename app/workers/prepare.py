@@ -6,7 +6,7 @@ import platform
 import subprocess
 import time
 import re
-import logging
+from backend.utils import logger
 from typing import Dict, Optional, List
 from openai import OpenAI
 from backend.db_operations import (
@@ -19,13 +19,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 AI_BATCH_SIZE = int(os.getenv("AI_BATCH_SIZE", 3))
 AI_INTERVAL = int(os.getenv("AI_INTERVAL", 10))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p"
-)
-logger = logging.getLogger(__name__)
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
