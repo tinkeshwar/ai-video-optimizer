@@ -2,7 +2,7 @@ import os
 import sqlite3
 import time
 from contextlib import contextmanager
-import logging
+from backend.utils import logger
 from typing import Optional
 from threading import Lock
 
@@ -10,10 +10,6 @@ DB_PATH = os.getenv("DB_PATH", "/data/video_db.sqlite")
 TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))  # Default 30 seconds timeout
 MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", "3"))
 RETRY_DELAY = float(os.getenv("DB_RETRY_DELAY", "0.1"))  # 100ms default delay between retries
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
 
 # Global lock for synchronizing database initialization
 _init_lock = Lock()
@@ -84,7 +80,7 @@ def init_db():
                 # Begin transaction
                 cursor.execute("BEGIN EXCLUSIVE")
 
-                # Create the table if it doesn't exist
+                # Create the videos table if it doesn't exist
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS videos (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,17 +90,31 @@ def init_db():
                         ai_command TEXT,
                         original_size INTEGER,
                         optimized_size INTEGER,
+                        estimated_size INTEGER,
                         optimized_path TEXT,
                         original_codec TEXT,
                         new_codec TEXT,
                         status TEXT DEFAULT 'pending',
+                        progress TEXT,
+                        system_info TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
 
+                # Create the status_history table if it doesn't exist
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS status_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        video_id INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        comment TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+                    )
+                ''')
+
                 # Ensure the existing columns are added only once
-                # Using a more robust approach to check for column existence
                 def add_column_if_not_exists(table: str, column: str, type_: str):
                     columns = cursor.execute(f"PRAGMA table_info({table})").fetchall()
                     if not any(col[1] == column for col in columns):
@@ -112,21 +122,17 @@ def init_db():
 
                 add_column_if_not_exists("videos", "original_codec", "TEXT")
                 add_column_if_not_exists("videos", "new_codec", "TEXT")
+                add_column_if_not_exists("videos", "updated_at", "DATETIME")
+                add_column_if_not_exists("videos", "progress", "TEXT")
+                add_column_if_not_exists("videos", "system_info", "TEXT")
+                add_column_if_not_exists("videos", "estimated_size", "INTEGER")
 
                 # Create indexes for better performance
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON videos(status)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON videos(created_at)")
-
-                # Create trigger to update updated_at timestamp
-                cursor.execute('''
-                    CREATE TRIGGER IF NOT EXISTS update_videos_timestamp 
-                    AFTER UPDATE ON videos
-                    BEGIN
-                        UPDATE videos SET updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = NEW.id;
-                    END;
-                ''')
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_status_history_video_id ON status_history(video_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_status_history_created_at ON status_history(created_at)")
 
                 # Commit changes to the database
                 conn.commit()

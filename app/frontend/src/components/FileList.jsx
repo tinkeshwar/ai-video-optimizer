@@ -39,7 +39,6 @@ function FileList() {
             <Tabs.Trigger disabled={!counts?.skipped} value="skipped">Skipped ({ counts?.skipped || 0})</Tabs.Trigger>
             <Tabs.Trigger disabled={!counts?.failed} value="failed">Failed ({ counts?.failed || 0})</Tabs.Trigger>
           </Tabs.List>
-
           <Box pt="3">
             <Tabs.Content value="pending"><FileTable status='pending' /></Tabs.Content>
             <Tabs.Content value="ready"><FileTable status='ready' /></Tabs.Content>

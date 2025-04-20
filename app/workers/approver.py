@@ -1,9 +1,8 @@
 import os
 import time
-import logging
+from backend.utils import logger
 from backend.db_operations import (
-    get_pending_videos,
-    get_optimized_videos,
+    get_videos_by_status,
     update_status_of_multiple_videos
 )
 
@@ -13,16 +12,12 @@ CONFIRM_INTERVAL = int(os.getenv("CONFIRM_INTERVAL", 60))
 AUTO_CONFIRMED = os.getenv("AUTO_CONFIRMED", "false").lower() == "true"
 AUTO_ACCEPT = os.getenv("AUTO_ACCEPT", "false").lower() == "true"
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
-
 def confirm_pending_videos():
     if not AUTO_CONFIRMED:
         logger.info("Auto confirmation is disabled. Skipping confirmation.")
         return
 
-    pending_videos = get_pending_videos(BATCH_SIZE)
+    pending_videos = get_videos_by_status('pending', BATCH_SIZE)
     if not pending_videos:
         logger.info("No pending videos to confirm.")
         return
@@ -38,7 +33,7 @@ def accept_optimized_videos():
         logger.info("Auto acceptance is disabled. Skipping optimization acceptance.")
         return
 
-    optimized_videos = get_optimized_videos(BATCH_SIZE)
+    optimized_videos = get_videos_by_status('optimized', BATCH_SIZE)
     if not optimized_videos:
         logger.info("No optimized videos to accept.")
         return

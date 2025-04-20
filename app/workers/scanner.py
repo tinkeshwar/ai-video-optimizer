@@ -1,6 +1,6 @@
 import os
 import time
-import logging
+from backend.utils import logger
 from pathlib import Path
 from typing import Iterator, Optional, List
 import json
@@ -15,10 +15,6 @@ from backend.db_operations import (
 VIDEO_DIR = os.getenv("VIDEO_DIR", "/video-input")
 SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 30))
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov'}
-
-# === Logger Setup ===
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
 
 
 # === Utilities ===

@@ -3,11 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routes import router
 import backend.db as db
 from contextlib import asynccontextmanager
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
-logger = logging.getLogger(__name__)
+from backend.utils import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
