@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from backend.db_operations import fetch, execute_with_retry, DatabaseError
-from collections import deque
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -87,6 +87,26 @@ def parse_ffprobe_data(ffprobe_json: str) -> Dict[str, Any]:
         logger.error(f"Failed to parse ffprobe data: {e}")
         return {}
 
+def extract_codec(output_file: str) -> str:
+    """Extract codec name from output file using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                output_file
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        codec = result.stdout.strip()
+        return codec or "unknown"
+    except Exception as e:
+        logger.error(f"Failed to extract codec from output: {e}")
+        return "unknown"
+
 def parse_ffmpeg_progress_line(line: str) -> Dict[str, float]:
     """Parse ffmpeg progress line to extract time and size."""
     time_match = re.search(r'time=(\d+):(\d+):(\d+)\.(\d+)', line)
@@ -105,9 +125,12 @@ def parse_ffmpeg_progress_line(line: str) -> Dict[str, float]:
     return {"time": current_time, "size": current_size}
 
 def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: float, original_size: int) -> Tuple[bool, str, str]:
-    """Execute the ffmpeg command and track progress with smart size estimation."""
+    """Execute the ffmpeg command and track progress."""
     try:
-        bitrate_window = deque(maxlen=5) 
+        last_progress = ""
+        update_interval_seconds = 5  # only update DB every few seconds
+        last_update_time = 0
+
         with subprocess.Popen(
             command_list,
             stdout=subprocess.PIPE,
@@ -117,57 +140,57 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
             universal_newlines=True
         ) as process:
             for line in process.stderr:
-                if "frame=" in line:
+                line = line.strip()
+                if not line:
+                    continue
+
+                parsed = parse_ffmpeg_progress_line(line)
+                current_time = parsed["time"]
+                current_size = parsed["size"]
+
+                if current_time == 0 and current_size == 0:
+                    continue
+
+                now = time.time()
+                if now - last_update_time >= update_interval_seconds:
                     try:
-                        execute_with_retry(SQL_QUERIES["update_progress"], (line.strip(), video_id))
+                        progress_text = f"time={current_time:.2f}s size={current_size/1024:.2f}KB"
+                        if progress_text != last_progress:
+                            execute_with_retry(SQL_QUERIES["update_progress"], (progress_text, video_id))
+                            last_progress = progress_text
+                            last_update_time = now
                     except DatabaseError as db_err:
                         logger.error(f"Failed to update progress for video {video_id}: {db_err}")
 
-                    parsed = parse_ffmpeg_progress_line(line)
-                    current_time = parsed["time"]
-                    current_size = parsed["size"]
+                if current_time > 10 and total_duration > 0:
+                    estimated_final_size = (current_size / current_time) * total_duration
+                    reduction_ratio = 1 - (estimated_final_size / original_size)
+                    execute_with_retry(SQL_QUERIES["update_estimated_size"], (estimated_final_size, video_id))
 
-                    if current_time > 10 and total_duration > 0:
-                        current_bitrate = current_size / current_time
-                        bitrate_window.append(current_bitrate)
-                        avg_bitrate = sum(bitrate_window) / len(bitrate_window)
-
-                        estimated_final_size = avg_bitrate * total_duration
-                        reduction_ratio = 1 - (estimated_final_size / original_size)
-
-                        execute_with_retry(SQL_QUERIES["update_estimated_size"], (estimated_final_size, video_id))
-
-                        logger.info(
-                            f"Estimated final size: {estimated_final_size / 1024 / 1024:.2f} MB "
-                            f"({reduction_ratio * 100:.2f}% reduction)"
-                        )
-
-                        if reduction_ratio < CONFIG.min_reduction_ratio:
-                            logger.warning(f"Early exit: Reduction {reduction_ratio:.2%} is below threshold.")
-                            execute_with_retry(SQL_QUERIES["update_status_confirmed"], (video_id,))
-                            process.terminate()
-                            try:
-                                process.wait(timeout=5)
-                            except subprocess.TimeoutExpired:
-                                logger.warning("Forced termination due to timeout.")
-                                process.kill()
-                                process.wait()
-                            return False, "", "ok"
+                    if reduction_ratio < CONFIG.min_reduction_ratio:
+                        logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
+                        process.terminate()
+                        process.wait(timeout=5)
+                        return False, "", "ok"
 
             return_code = process.wait(timeout=10)
             if return_code != 0:
                 logger.error(f"ffmpeg failed with return code {return_code}")
                 return False, "", "not ok"
 
-        return True, "", "ok"
+        output_file = next((arg for arg in command_list if arg.endswith(".mp4")), "")
+        codec = extract_codec(output_file)
+        return True, codec, "ok"
+
     except subprocess.TimeoutExpired:
-        logger.warning("Timeout while waiting for ffmpeg. Killing process.")
+        logger.warning("Process termination timeout. Forcing kill.")
         process.kill()
         process.wait()
         return False, "", "timeout"
     except Exception as e:
         logger.exception(f"Unexpected error during ffmpeg execution: {e}")
         return False, "", "error"
+
 
 def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tuple[bool, str, str]:
     """Execute ffmpeg command to process the video."""
