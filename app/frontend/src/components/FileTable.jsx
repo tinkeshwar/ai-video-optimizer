@@ -19,6 +19,8 @@ function FileTable({ status }) {
   const [totalPages, setTotalPages] = useState(1);
   const [sizeFilter, setSizeFilter] = useState('all');
   const [codecFilter, setCodecFilter] = useState('all');
+  const [fileNameSearch, setFileNameSearch] = useState('');
+  const [filePathSearch, setFilePathSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const itemsPerPage = 50;
@@ -27,7 +29,7 @@ function FileTable({ status }) {
     const fetchFilesDebounced = debounce(fetchFiles, 300);
     fetchFilesDebounced();
     return () => fetchFilesDebounced.cancel();
-  }, [currentPage, sizeFilter, codecFilter]);
+  }, [currentPage, sizeFilter, codecFilter, fileNameSearch, filePathSearch]);
 
   useEffect(() => {
     if (status === 'ready') {
@@ -39,6 +41,9 @@ function FileTable({ status }) {
   const fetchFiles = async () => {
     setLoading(true);
     setError(null);
+    const source = axios.CancelToken.source();
+    fetchFiles.cancel = () => source.cancel('Request canceled due to a new request.');
+
     try {
       const response = await axios.get(`/api/videos/${status}`, {
         params: {
@@ -46,13 +51,20 @@ function FileTable({ status }) {
           limit: itemsPerPage,
           size: toByte(sizeFilter),
           codec: toCodec(codecFilter),
+          name: fileNameSearch,
+          directory: filePathSearch
         },
+        cancelToken: source.token,
       });
       setFiles(response.data.list);
       setTotalPages(response.data.total_pages);
     } catch (err) {
-      setError('Failed to fetch files. Please try again.');
-      console.error('Error fetching files:', err);
+      if (axios.isCancel(err)) {
+        console.log('Request canceled:', err.message);
+      } else {
+        setError('Failed to fetch files. Please try again.');
+        console.error('Error fetching files:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -154,6 +166,10 @@ function FileTable({ status }) {
           setSizeFilter={setSizeFilter}
           codecFilter={codecFilter}
           setCodecFilter={setCodecFilter}
+          fileNameSearch={fileNameSearch}
+          setFileNameSearch={setFileNameSearch}
+          filePathSearch={filePathSearch}
+          setFilePathSearch={setFilePathSearch}
         />
       </Box>
       {loading ? (

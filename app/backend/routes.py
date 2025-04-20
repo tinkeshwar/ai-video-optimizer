@@ -34,7 +34,7 @@ def get_all_videos(page: int = 1, limit: int = 10):
     return [dict(row) for row in rows]
 
 @router.get("/api/videos/{status}")
-def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None):
+def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None, name: str = None, directory: str = None):
     if status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -47,6 +47,12 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
     if size:
         filters.append("original_size >= ?")
         params.append(size)
+    if name:
+        filters.append("filename LIKE ?")
+        params.append(f"%{name}%")
+    if directory:
+        filters.append("filepath LIKE ?")
+        params.append(f"%{directory}%")
     
     where_clause = " AND ".join(filters)
     
