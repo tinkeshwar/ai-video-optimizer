@@ -56,7 +56,10 @@ SQL_QUERIES = {
         UPDATE videos SET status = 'failed' WHERE id = ?
     """,
     "update_status_confirmed": """
-        UPDATE videos SET estimated_size = ?, status = 're-confirmed' WHERE id = ?
+        UPDATE videos SET status = 're-confirmed' WHERE id = ?
+    """,
+    "update_estimated_size": """
+        UPDATE videos SET estimated_size = ?, WHERE id = ?
     """,
     "update_status_optimized": """
         UPDATE videos
@@ -125,6 +128,7 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
                     if current_time > 10 and total_duration > 0:
                         estimated_final_size = (current_size / current_time) * total_duration
                         reduction_ratio = 1 - (estimated_final_size / original_size)
+                        execute_with_retry(SQL_QUERIES["update_estimated_size"], (estimated_final_size, video_id))
 
                         if reduction_ratio < CONFIG.min_reduction_ratio:
                             logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
