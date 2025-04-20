@@ -9,6 +9,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from backend.db_operations import fetch, execute_with_retry, DatabaseError
+from collections import deque
 
 # Configure logging
 logging.basicConfig(
@@ -104,8 +105,9 @@ def parse_ffmpeg_progress_line(line: str) -> Dict[str, float]:
     return {"time": current_time, "size": current_size}
 
 def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: float, original_size: int) -> Tuple[bool, str, str]:
-    """Execute the ffmpeg command and track progress."""
+    """Execute the ffmpeg command and track progress with smart size estimation."""
     try:
+        bitrate_window = deque(maxlen=5) 
         with subprocess.Popen(
             command_list,
             stdout=subprocess.PIPE,
@@ -126,14 +128,30 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
                     current_size = parsed["size"]
 
                     if current_time > 10 and total_duration > 0:
-                        estimated_final_size = (current_size / current_time) * total_duration
+                        current_bitrate = current_size / current_time
+                        bitrate_window.append(current_bitrate)
+                        avg_bitrate = sum(bitrate_window) / len(bitrate_window)
+
+                        estimated_final_size = avg_bitrate * total_duration
                         reduction_ratio = 1 - (estimated_final_size / original_size)
+
                         execute_with_retry(SQL_QUERIES["update_estimated_size"], (estimated_final_size, video_id))
 
+                        logger.info(
+                            f"Estimated final size: {estimated_final_size / 1024 / 1024:.2f} MB "
+                            f"({reduction_ratio * 100:.2f}% reduction)"
+                        )
+
                         if reduction_ratio < CONFIG.min_reduction_ratio:
-                            logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
+                            logger.warning(f"Early exit: Reduction {reduction_ratio:.2%} is below threshold.")
+                            execute_with_retry(SQL_QUERIES["update_status_confirmed"], (video_id,))
                             process.terminate()
-                            process.wait(timeout=5)
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                logger.warning("Forced termination due to timeout.")
+                                process.kill()
+                                process.wait()
                             return False, "", "ok"
 
             return_code = process.wait(timeout=10)
@@ -143,7 +161,7 @@ def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: fl
 
         return True, "", "ok"
     except subprocess.TimeoutExpired:
-        logger.warning("Process termination timeout. Forcing kill.")
+        logger.warning("Timeout while waiting for ffmpeg. Killing process.")
         process.kill()
         process.wait()
         return False, "", "timeout"
