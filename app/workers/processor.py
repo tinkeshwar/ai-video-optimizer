@@ -28,7 +28,21 @@ class Config:
     sleep_interval: int = int(os.getenv("SLEEP_INTERVAL", "10"))
     max_retry_delay: int = int(os.getenv("MAX_RETRY_DELAY", "300"))
 
+    def validate(self):
+        """Validate configuration values."""
+        if self.min_reduction_ratio <= 0 or self.min_reduction_ratio > 1:
+            raise ValueError("MIN_REDUCTION_RATIO must be between 0 and 1.")
+        if self.process_retry_delay <= 0:
+            raise ValueError("PROCESS_RETRY_DELAY must be greater than 0.")
+        if self.max_consecutive_errors <= 0:
+            raise ValueError("MAX_CONSECUTIVE_ERRORS must be greater than 0.")
+        if self.sleep_interval <= 0:
+            raise ValueError("SLEEP_INTERVAL must be greater than 0.")
+        if self.max_retry_delay <= 0:
+            raise ValueError("MAX_RETRY_DELAY must be greater than 0.")
+
 CONFIG = Config()
+CONFIG.validate()
 
 # SQL Queries
 SQL_QUERIES = {
@@ -72,20 +86,69 @@ def parse_ffprobe_data(ffprobe_json: str) -> Dict[str, Any]:
 def parse_ffmpeg_progress_line(line: str) -> Dict[str, float]:
     """Parse ffmpeg progress line to extract time and size."""
     time_match = re.search(r'time=(\d+):(\d+):(\d+)\.(\d+)', line)
+    current_time = 0.0
     if time_match:
         h, m, s, ms = map(int, time_match.groups())
         current_time = h * 3600 + m * 60 + s + ms / 100.0
     else:
         current_time_match = re.search(r'time=(\d+\.\d+)', line)
-        current_time = float(current_time_match.group(1)) if current_time_match else 0.0
+        if current_time_match:
+            current_time = float(current_time_match.group(1))
 
     size_match = re.search(r'size=\s*(\d+)\s*kB', line)
     current_size = float(size_match.group(1)) * 1024 if size_match else 0.0
 
     return {"time": current_time, "size": current_size}
 
-def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tuple[bool, str]:
-    """Execute ffmpeg command to process the video with progress tracking."""
+def execute_ffmpeg_command(command_list: list, video_id: int, total_duration: float, original_size: int) -> Tuple[bool, str, str]:
+    """Execute the ffmpeg command and track progress."""
+    try:
+        with subprocess.Popen(
+            command_list,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        ) as process:
+            for line in process.stderr:
+                if "frame=" in line:
+                    try:
+                        execute_with_retry(SQL_QUERIES["update_progress"], (line.strip(), video_id))
+                    except DatabaseError as db_err:
+                        logger.error(f"Failed to update progress for video {video_id}: {db_err}")
+
+                    parsed = parse_ffmpeg_progress_line(line)
+                    current_time = parsed["time"]
+                    current_size = parsed["size"]
+
+                    if current_time > 10 and total_duration > 0:
+                        estimated_final_size = (current_size / current_time) * total_duration
+                        reduction_ratio = 1 - (estimated_final_size / original_size)
+
+                        if reduction_ratio < CONFIG.min_reduction_ratio:
+                            logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
+                            process.terminate()
+                            process.wait(timeout=5)
+                            return False, "", "ok"
+
+            return_code = process.wait(timeout=10)
+            if return_code != 0:
+                logger.error(f"ffmpeg failed with return code {return_code}")
+                return False, "", "not ok"
+
+        return True, "", "ok"
+    except subprocess.TimeoutExpired:
+        logger.warning("Process termination timeout. Forcing kill.")
+        process.kill()
+        process.wait()
+        return False, "", "timeout"
+    except Exception as e:
+        logger.exception(f"Unexpected error during ffmpeg execution: {e}")
+        return False, "", "error"
+
+def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tuple[bool, str, str]:
+    """Execute ffmpeg command to process the video."""
     try:
         video_id = video["id"]
         command_str = video["ai_command"]
@@ -101,66 +164,10 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
         command_list[command_list.index("output.mp4")] = str(output_path)
 
         logger.info(f"Executing ffmpeg: {' '.join(command_list)}")
-
-        with subprocess.Popen(
-            command_list,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        ) as process:
-            try:
-                for line in process.stderr:
-                    if "frame=" in line:
-                        try:
-                            execute_with_retry(SQL_QUERIES["update_progress"], (line.strip(), video_id))
-                        except DatabaseError as db_err:
-                            logger.error(f"Failed to update progress for video {video_id}: {db_err}")
-
-                        parsed = parse_ffmpeg_progress_line(line)
-                        current_time = parsed["time"]
-                        current_size = parsed["size"]
-
-                        if current_time > 10 and total_duration > 0:
-                            estimated_final_size = (current_size / current_time) * total_duration
-                            reduction_ratio = 1 - (estimated_final_size / original_size)
-
-                            if reduction_ratio < CONFIG.min_reduction_ratio:
-                                logger.info(f"Early abort: Reduction ratio {reduction_ratio*100:.2f}% below threshold.")
-                                process.terminate()
-                                process.wait(timeout=5)
-                                execute_with_retry(SQL_QUERIES["update_status_confirmed"], (int(estimated_final_size), video_id))
-                                return False, ""
-            except subprocess.TimeoutExpired:
-                logger.warning("Process termination timeout. Forcing kill.")
-                process.kill()
-                process.wait()
-
-            return_code = process.wait(timeout=10)
-            if return_code != 0:
-                logger.error(f"ffmpeg failed with return code {return_code}")
-                return False, ""
-
-        codec = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-select_streams", "v:0",
-                "-show_entries", "stream=codec_name",
-                "-of", "default=noprint_wrappers=1:nokey=1", str(output_path)
-            ],
-            capture_output=True,
-            text=True,
-            check=True
-        ).stdout.strip()
-
-        return True, codec
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"ffmpeg subprocess error: {e.stderr}")
-        return False, ""
+        return execute_ffmpeg_command(command_list, video_id, total_duration, original_size)
     except Exception as e:
-        logger.exception(f"Unexpected error in run_ffmpeg: {e}")
-        return False, ""
+        logger.exception(f"Error in run_ffmpeg: {e}")
+        return False, "", "error"
 
 def update_video_status(video_id: int, optimized_size: int, output_path: str, codec: str) -> bool:
     """Update video status in the database after processing."""
@@ -185,12 +192,15 @@ def process_video(video: Dict[str, Any]) -> bool:
         return False
 
     try:
-        success, codec = run_ffmpeg(str(input_path), str(output_path), video)
+        success, codec, status = run_ffmpeg(str(input_path), str(output_path), video)
         if success:
             optimized_size = output_path.stat().st_size
             if update_video_status(video["id"], optimized_size, str(output_path), codec):
                 logger.info(f"Successfully optimized video: {input_path.name}")
                 return True
+        elif status == "ok" and not success:
+            logger.error(f"Processing failed due to threshold not reached: {input_path.name}")
+            execute_with_retry(SQL_QUERIES["update_status_confirmed"], (video["id"],))
         else:
             logger.warning(f"Processing failed for video: {input_path.name}")
             execute_with_retry(SQL_QUERIES["update_status_failed"], (video["id"],))
