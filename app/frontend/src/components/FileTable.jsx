@@ -117,7 +117,7 @@ function FileTable({ status }) {
       const speedMatch = ffmpegOut.match(/speed=([\d.]+)x/);
       const bitrateMatch = ffmpegOut.match(/bitrate=\s*([\d.]+)kbits\/s/);
 
-      if (!timeMatch || !speedMatch) return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA' };
+      if (!timeMatch || !speedMatch) return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA', videoProcessedTime: 'NA' };
 
       const [_, hh, mm, ss] = timeMatch;
       const currentTimeInSeconds = (+hh) * 3600 + (+mm) * 60 + (+ss);
@@ -136,13 +136,13 @@ function FileTable({ status }) {
       const expectedFileSize = targetBitrate ? ((duration * targetBitrate) / 8) : 0;
 
       return {
-        runtime: formatTime(duration),
+        videoProcessedTime: formatTime(currentTimeInSeconds),
         progressPercent: Number(progressPercent),
         estimateTimeRemaining: formatTime(remainingSeconds),
         expectedFileSize: expectedFileSize ? byteToGigabyte(expectedFileSize) : 'NA',
       };
     } catch {
-      return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA' };
+      return { progressPercent: 0, estimateTimeRemaining: 'NA', expectedFileSize: 'NA', videoProcessedTime: 'NA'};
     }
   };
 
@@ -210,7 +210,7 @@ function FileTable({ status }) {
                       value={calculateProgressAndETA(file.ffprobe_data, file.progress).progressPercent}
                       variant="classic"
                     />
-                    {calculateProgressAndETA(file.ffprobe_data, file.progress).estimateTimeRemaining} | {calculateProgressAndETA(file.ffprobe_data, file.progress).expectedFileSize}
+                    {calculateProgressAndETA(file.ffprobe_data, file.progress).estimateTimeRemaining} | {calculateProgressAndETA(file.ffprobe_data, file.progress).expectedFileSize} | {calculateProgressAndETA(file.ffprobe_data, file.progress).videoProcessedTime}
                   </Table.Cell>
                 )}
                 {Object.keys(actionConfig).includes(status) && (
