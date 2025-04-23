@@ -143,6 +143,8 @@ def create_prompt(video: Dict, system_info: Dict, previous_command: Optional[str
             {previous_command}
             The estimated size is too large compared to the original size.
             Please re-generate the command to be more efficient.
+            Use -b:v (bitrate) and/or -maxrate/-bufsize to cap the output size more effectively if -crf of last command is 28 or more.
+            The command should always be more efficient than the last one.
         """
     return base_prompt
 
