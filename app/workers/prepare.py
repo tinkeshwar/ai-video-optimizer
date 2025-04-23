@@ -6,8 +6,8 @@ import platform
 import subprocess
 import time
 import re
-from backend.utils import logger
 from typing import Dict, Optional, List
+from backend.utils import logger
 from openai import OpenAI
 from backend.db_operations import (
     get_videos_by_status,
@@ -18,7 +18,8 @@ from backend.db_operations import (
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 AI_BATCH_SIZE = int(os.getenv("AI_BATCH_SIZE", 3))
 AI_INTERVAL = int(os.getenv("AI_INTERVAL", 10))
-
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
+PROMPT_FILE_PATH = "/data/prompt.txt"
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -35,7 +36,6 @@ def get_system_info() -> Dict[str, str]:
         "Python_Version": platform.python_version(),
     }
 
-    # GPU detection
     gpu_info = detect_gpu()
     if gpu_info:
         info["GPU"] = gpu_info
@@ -45,37 +45,39 @@ def get_system_info() -> Dict[str, str]:
 
 def detect_gpu() -> Optional[str]:
     """Detect GPU information using various tools."""
-    # Check for GPU from environment variables
     env_gpu = os.getenv("HOST_GPU_MODEL")
     if env_gpu:
         return f"Host GPU: {env_gpu}"
 
-    # VAAPI detection
-    if vainfo := run_command(["vainfo"]):
-        if "VAProfile" in vainfo:
-            return "VAAPI available"
+    gpu_detection_methods = [
+        (["vainfo"], "VAProfile", "VAAPI available"),
+        (["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], None, "NVIDIA GPU: {output}"),
+        (["rocm-smi", "--showproductname"], None, "AMD GPU (ROCm): {output}")
+    ]
 
-    # NVIDIA GPU detection
-    if gpu := run_command(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]):
-        return f"NVIDIA GPU: {gpu.strip()}"
+    for command, keyword, message in gpu_detection_methods:
+        output = run_command(command)
+        if output and (not keyword or keyword in output):
+            return message.format(output=output.strip())
 
-    # AMD ROCm GPU detection
-    if gpu := run_command(["rocm-smi", "--showproductname"]):
-        return f"AMD GPU (ROCm): {gpu.strip()}"
-
-    # lspci fallback for Linux
     if platform.system().lower() == "linux":
-        lspci_output = run_command(["lspci"])
-        if lspci_output:
-            amd_lines = [line for line in lspci_output.splitlines() if "AMD" in line or "ATI" in line]
-            nvidia_lines = [line for line in lspci_output.splitlines() if "NVIDIA" in line]
-            if amd_lines:
-                return f"AMD GPU detected via lspci: {amd_lines[0]}"
-            if nvidia_lines:
-                return f"NVIDIA GPU detected via lspci: {nvidia_lines[0]}"
-        return "No discrete GPU detected via lspci"
+        return detect_gpu_via_lspci()
 
     return "GPU detection not supported on this OS without NVIDIA or ROCm tools"
+
+
+def detect_gpu_via_lspci() -> Optional[str]:
+    """Detect GPU using lspci on Linux."""
+    lspci_output = run_command(["lspci"])
+    if not lspci_output:
+        return "No discrete GPU detected via lspci"
+
+    for vendor, name in [("AMD", "AMD GPU detected via lspci"), ("NVIDIA", "NVIDIA GPU detected via lspci")]:
+        lines = [line for line in lspci_output.splitlines() if vendor in line]
+        if lines:
+            return f"{name}: {lines[0]}"
+
+    return "No discrete GPU detected via lspci"
 
 
 def run_command(command: List[str]) -> Optional[str]:
@@ -86,123 +88,78 @@ def run_command(command: List[str]) -> Optional[str]:
         return None
 
 
-def send_to_ai(ffprobe_data: Dict, system_info: Dict) -> Optional[str]:
-    """Send video metadata and system info to OpenAI to generate an ffmpeg command."""
-    prompt = f"""
+def generate_ai_command(prompt: str) -> Optional[str]:
+    """Send a prompt to OpenAI and return the generated command."""
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a video processing expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"[AI Error] {str(e)}")
+        return None
+
+
+def create_prompt(video: Dict, system_info: Dict, previous_command: Optional[str] = None) -> str:
+    """Create a prompt for OpenAI based on video metadata and system info."""
+    base_prompt = f"""
         Here is the metadata of a video file:
-        ffprobe data: {json.dumps(ffprobe_data, indent=2)}
+        ffprobe data: {json.dumps(video["ffprobe_data"], indent=2)}
         System info: {json.dumps(system_info, indent=2)}
 
-        Your task is to generate the most optimal ffmpeg command to compress this video with the following requirements:
-
-            - Prioritize significant space savings while preserving visual quality.
-            - Use the **x265** codec if supported.
-            - Maintain the original **resolution** and **frame rate** exactly.
-            - Use **hardware acceleration** (e.g., NVENC, VAAPI, or QSV) if available in system_info.
-            - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22-28 based on ffprobe_data).
-            - Audio should be copied without re-encoding.
-            - The result should be web-streaming friendly (i.e., add `-movflags +faststart`).
-            - Only return a single-line ffmpeg command starting with `ffmpeg`.
-            - Use `input.mp4` as input and `output.mp4` as output.
-            - In file exist in output command should overwrite the file.
-            - Do not include any other text or explanations.
-
-        Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
     """
-    try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a video processing expert."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"[AI Error] {str(e)}")
-        return None
 
-def send_to_ai_again(video: Dict, system_info: Dict) -> Optional[str]:
-    """Send video metadata and system info to OpenAI to generate an ffmpeg command."""
-    prompt = f"""
-        Here is the ffprobe data of the video:
-        {json.dumps(video["ffprobe_data"], indent=2)}
-        Here is the system info:
-        {json.dumps(system_info, indent=2)}
+    if os.path.exists(PROMPT_FILE_PATH):
+        with open(PROMPT_FILE_PATH, "r") as file:
+            custom_prompt = file.read().strip()
+        base_prompt += custom_prompt
+    else:
+        base_prompt += f"""
+            Your task is to generate the most optimal ffmpeg command to compress this video with the following requirements:
 
-        You have already generated a command for this video, but it is not efficient enough.
+                - Prioritize significant space savings while preserving visual quality.
+                - Use the **x265** codec if supported.
+                - Maintain the original **resolution** and **frame rate** exactly.
+                - Use **hardware acceleration** only (e.g., NVENC, VAAPI, or QSV) if available in system_info, add required tag in command.
+                - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22-28 based on ffprobe_data).
+                - Audio should be copied without re-encoding.
+                - The result should be web-streaming friendly (i.e., add `-movflags +faststart`).
+                - Only return a single-line ffmpeg command starting with `ffmpeg`.
+                - Use `input.mp4` as input and `output.mp4` as output.
+                - In file exist in output command should overwrite the file.
+                - Do not include any other text or explanations.
+                - Recheck command against all requirements.
+        """
 
-        Here is the last command:
-        {video["ai_command"]}     
-        Here is the ffmpeg command output:
-        {video["progress"]}
+    if previous_command:
+        base_prompt += f"""
+            Here is the last command:
+            {previous_command}
+            The estimated size is too large compared to the original size.
+            Please re-generate the command to be more efficient.
+        """
+    return base_prompt
 
-        The estimated size is too large compared to the original size.
-        The original size is {video["original_size"]} bytes, and the estimated size is {video["estimated_size"]} bytes.
-        The command you generated is not efficient enough, so re-generate the command.
-        Here are the requirements for the new command:
-            - Prioritize significant space savings while preserving visual quality.
-            - Use the **x265** codec if supported.
-            - Maintain the original **resolution** and **frame rate** exactly.
-            - Use **hardware acceleration** (e.g., NVENC, VAAPI, or QSV) if available in system_info.
-            - Avoid lossless mode, but keep compression visually lossless (e.g., CRF 22-28 based on ffprobe_data).
-            - Audio should be copied without re-encoding.
-            - The result should be web-streaming friendly (i.e., add `-movflags +faststart`).
-            - Only return a single-line ffmpeg command starting with `ffmpeg`.
-            - Use `input.mp4` as input and `output.mp4` as output.
-            - In file exist in output command should overwrite the file.
-            - Do not include any other text or explanations.
 
-        Make sure the command is ready for use in `subprocess.run(command.split())` in Python.
-    """
-    try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a video processing expert."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"[AI Error] {str(e)}")
-        return None
-
-def process_batch():
-    """Process a batch of videos by generating ffmpeg commands using AI."""
-    videos = get_videos_by_status('confirmed', AI_BATCH_SIZE)
+def process_videos(status: str, regenerate: bool = False):
+    """Process a batch of videos based on their status."""
+    videos = get_videos_by_status(status, AI_BATCH_SIZE)
     if not videos:
-        logger.info("No confirmed videos to process.")
+        logger.info(f"No {status} videos to process.")
         return
 
     system_info = get_system_info()
 
     for video in videos:
         logger.info(f"Processing video: {video['filename']}")
-        command = send_to_ai(video["ffprobe_data"], system_info)
-        if command:
-            command = extract_ffmpeg_command(command)
-            update_video_command_and_system_info(video["id"], command, json.dumps(system_info, indent=2))
-            logger.info(f"[Saved] AI command saved for video ID: {video['id']}")
-        else:
-            logger.warning(f"[Skipped] AI command generation failed for video ID: {video['id']}")
-
-def re_process_batch():
-    """Process a batch of videos for which command already generated but not efficient enough, so re generate the command."""
-    videos = get_videos_by_status('re-confirmed', AI_BATCH_SIZE)
-    if not videos:
-        logger.info("No re-confirmed videos to process.")
-        return
-
-    system_info = get_system_info()
-
-    for video in videos:
-        logger.info(f"Processing video: {video['filename']}")
-        command = send_to_ai_again(video, system_info)
+        prompt = create_prompt(video, system_info, video["ai_command"] if regenerate else None)
+        command = generate_ai_command(prompt)
         if command:
             command = extract_ffmpeg_command(command)
             update_video_command_and_system_info(video["id"], command, json.dumps(system_info, indent=2))
@@ -224,8 +181,8 @@ def main():
     logger.info("Starting AI Command Generator...")
     while True:
         try:
-            process_batch()
-            re_process_batch()
+            process_videos('confirmed')
+            process_videos('re-confirmed', regenerate=True)
         except Exception as e:
             logger.error(f"[Main Error] {e}")
         time.sleep(AI_INTERVAL)
