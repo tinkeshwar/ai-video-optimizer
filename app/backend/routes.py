@@ -83,6 +83,31 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
         "requested_per_page": limit
     }
 
+@router.post("/api/videos/status")
+def update_status_bulk(video_ids: list[int], update: StatusUpdate):
+    if update.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    if not video_ids:
+        raise HTTPException(status_code=400, detail="No video IDs provided")
+    
+    # Update the status for all provided video IDs
+    query = f"UPDATE videos SET status = ? WHERE id IN ({','.join(['?'] * len(video_ids))})"
+    params = [update.status] + video_ids
+    rows_affected = execute_query(query, params, fetch_all=False)
+    
+    if rows_affected == 0:
+        raise HTTPException(status_code=404, detail="No videos found for the provided IDs")
+    
+    # Update the status history for each video
+    for video_id in video_ids:
+        execute_query(
+            "INSERT INTO status_history (video_id, status, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (video_id, update.status)
+        )
+    
+    return {"message": f"Status updated to {update.status} for {rows_affected} videos"}
+
 @router.post("/api/videos/{video_id}/status")
 def update_video_status(video_id: int, update: StatusUpdate):
     if update.status not in VALID_STATUSES:

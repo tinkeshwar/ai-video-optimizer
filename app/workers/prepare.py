@@ -50,6 +50,11 @@ def detect_gpu() -> Optional[str]:
     if env_gpu:
         return f"Host GPU: {env_gpu}"
 
+    # VAAPI detection
+    if vainfo := run_command(["vainfo"]):
+        if "VAProfile" in vainfo:
+            return "VAAPI available"
+
     # NVIDIA GPU detection
     if gpu := run_command(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]):
         return f"NVIDIA GPU: {gpu.strip()}"
@@ -57,11 +62,6 @@ def detect_gpu() -> Optional[str]:
     # AMD ROCm GPU detection
     if gpu := run_command(["rocm-smi", "--showproductname"]):
         return f"AMD GPU (ROCm): {gpu.strip()}"
-
-    # VAAPI detection
-    if vainfo := run_command(["vainfo"]):
-        if "VAProfile" in vainfo:
-            return "VAAPI available"
 
     # lspci fallback for Linux
     if platform.system().lower() == "linux":
