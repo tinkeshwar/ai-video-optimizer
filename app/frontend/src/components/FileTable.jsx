@@ -158,6 +158,11 @@ function FileTable({ status }) {
     }
   };
 
+  const countAttempts = (history) => {
+    if (!history) return 0;
+    return history.map(h => h.status).filter(s => ['confirmed', 're-confirmed'].includes(s)).length;
+  }
+
   return (
     <>
       <Box p="4" style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: '#f3f4f6' }}>
@@ -188,6 +193,7 @@ function FileTable({ status }) {
               <Table.ColumnHeaderCell>Codec</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Runtime</Table.ColumnHeaderCell>
               {status === 'optimized' && <Table.ColumnHeaderCell>Compressed</Table.ColumnHeaderCell>}
+              {(status === 'optimized' || status === 'failed') && <Table.ColumnHeaderCell>Attempts</Table.ColumnHeaderCell>}
               <Table.ColumnHeaderCell>Size</Table.ColumnHeaderCell>
               {status === 'ready' && <Table.ColumnHeaderCell>Progress</Table.ColumnHeaderCell>}
               {Object.keys(actionConfig).includes(status) && <Table.ColumnHeaderCell>Action</Table.ColumnHeaderCell>}
@@ -215,6 +221,7 @@ function FileTable({ status }) {
                   {file.ffprobe_data ? calculateRuntime(file.ffprobe_data) : 'NA'}
                 </Table.Cell>
                 {status === 'optimized' && <Table.Cell>{compressionPercentage(file.original_size, file.optimized_size)}</Table.Cell>}
+                {(status === 'optimized' || status === 'failed') && <Table.Cell>{countAttempts(file?.history)}</Table.Cell>}
                 <Table.Cell>
                   {byteToGigabyte(Number(file.original_size))}
                   {file.optimized_size && ` | ${byteToGigabyte(Number(file.optimized_size))}`}
