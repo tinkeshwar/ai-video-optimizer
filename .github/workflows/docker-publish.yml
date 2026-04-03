@@ -26,13 +26,25 @@ jobs:
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0")
           echo "latest_tag=${latest_tag}" >> $GITHUB_OUTPUT
 
-      - name: Generate version
+      - name: Determine version bump from commits
         id: version
         run: |
           IFS='.' read -r major minor patch <<< "${{ steps.previoustag.outputs.latest_tag }}"
-          new_patch=$((patch + 1))
-          new_version="${major}.${minor}.${new_patch}"
-          echo "version=${new_version}" >> $GITHUB_OUTPUT
+          prev_tag="${{ steps.previoustag.outputs.latest_tag }}"
+          commits=$(git log ${prev_tag}..HEAD --pretty=format:"%s%n%b" --no-merges)
+
+          if echo "$commits" | grep -qiE 'BREAKING CHANGE:|^[a-z]+\!:'; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif echo "$commits" | grep -qiE '^feat(\(.+\))?:'; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          echo "version=${major}.${minor}.${patch}" >> $GITHUB_OUTPUT
 
       - name: Set up Git and Push Tag
         run: |
