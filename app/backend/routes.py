@@ -15,7 +15,7 @@ class CommandUpdate(BaseModel):
     ai_command: str
 
 VALID_STATUSES = [
-    "pending", "confirmed", "rejected", "ready", "optimized",
+    "pending", "confirmed", "rejected", "ready", "processing", "optimized",
     "accepted", "skipped", "failed", "replaced"
 ]
 
@@ -46,7 +46,7 @@ def get_summary_stats():
             COALESCE(SUM(CASE WHEN status = 'replaced' THEN optimized_size ELSE 0 END), 0) as total_optimized_size,
             COALESCE(SUM(CASE WHEN status = 'replaced' THEN original_size - optimized_size ELSE 0 END), 0) as total_saved,
             COUNT(CASE WHEN status = 'replaced' THEN 1 END) as completed_count,
-            COUNT(CASE WHEN status = 'ready' THEN 1 END) as processing_count
+            COUNT(CASE WHEN status IN ('ready', 'processing') THEN 1 END) as processing_count
         FROM videos
         """, fetch_all=False
     )

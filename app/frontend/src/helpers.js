@@ -57,8 +57,9 @@ export const progressFromProbe = (ffprobe, ffmpegOut) => {
       eta: formatDuration(remaining),
       size: estSize ? byteToHuman(estSize) : 'NA',
       processed: formatDuration(cur),
+      speed: `${speed.toFixed(2)}x`,
     };
   } catch {
-    return { percent: 0, eta: 'NA', size: 'NA', processed: 'NA' };
+    return { percent: 0, eta: 'NA', size: 'NA', processed: 'NA', speed: 'NA' };
   }
 };
