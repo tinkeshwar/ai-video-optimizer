@@ -41,8 +41,8 @@ function FileTable({ status, onAction }) {
   const [commandModal, setCommandModal] = useState(null);
   const itemsPerPage = 50;
 
-  const HISTORY_TABS = new Set(['optimized', 'replaced', 'rejected', 'skipped', 'failed']);
-  const COMMAND_EDIT_TABS = new Set(['confirmed', 'ready', 'optimized', 'skipped', 'failed']);
+  const HISTORY_TABS = new Set(['confirmed', 'ready', 'processing', 'optimized', 'replaced', 'rejected', 'skipped', 'failed']);
+  const COMMAND_EDIT_TABS = new Set(['confirmed', 'ready', 'processing', 'optimized', 'skipped', 'failed']);
   const hasActions = Object.keys(ACTION_CONFIG).includes(status);
   const showHistory = HISTORY_TABS.has(status);
   const showCommandEdit = COMMAND_EDIT_TABS.has(status);
@@ -257,7 +257,7 @@ function FileTable({ status, onAction }) {
                     <Flex align="center" gap="1">
                       {file.filename}
                       <Tooltip content={file.filepath}><InfoCircledIcon /></Tooltip>
-                      {(file.ai_command || file.ffprobe_data) && ['ready', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
+                      {(file.ai_command || file.ffprobe_data) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
                         <Tooltip content="View AI command">
                           <Button size="1" variant="ghost" onClick={() => setExpandedId(expandedId === file.id ? null : file.id)}>
                             <CodeIcon />
