@@ -10,7 +10,7 @@ import { useToast } from './Toast';
 import { byteToHuman, runtimeFromProbe, compressionPercent, progressFromProbe, relativeTime } from '../helpers';
 
 const ACTION_CONFIG = {
-  pending: { positive: 'confirmed', negative: 'rejected' },
+  pending: { positive: 'confirmed', negative: 'rejected', delete: true },
   confirmed: { revert: 'pending' },
   optimized: { positive: 'accepted', negative: 'skipped' },
   ready: { revert: 'pending' },
