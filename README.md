@@ -12,32 +12,45 @@ This project automatically scans a directory for videos, extracts their metadata
 - 📊 SQLite database to store video data
 - 🌐 React dashboard for approvals
 - 🐳 Fully containerized using Docker Compose
+- 🖥️ Virtual display (Xvfb) for headless video processing
+- 🔄 CI/CD with GitHub Actions and Docker Hub publishing
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-/video-input/           => Input videos directory
-/video-output/          => Optimized output videos
-/data/video_db.sqlite   => SQLite database
+/video-input/              => Input videos directory
+/video-output/             => Optimized output videos
+/data/video_db.sqlite      => SQLite database
 
-📦 docker-compose.yml
-├── backend/               => FastAPI server
-│   ├── db.py              => Core database connection handling
-│   ├── db_operations.py   => High-level database operations
-│   ├── main.py            => main entry point
-│   └── routes.py          => API routes
-├── workers/
-│   ├── scanner.py         => Scans videos directory
-│   ├── prepare.py         => Calls AI API
-│   ├── processor.py       => Runs ffmpeg
-│   ├── approver.py        => Auto approve to process and replace if set in ENV
-│   └── mover.py           => Handles file replacement
-├── frontend/              => React + Vite UI
-├── nginx/                 => Nginx configuration
-│   └── default.conf       => Default nginx site config
-└── entrypoint.sh/         => Entrypoint for docker container start
+📦 Project Root
+├── app/
+│   ├── backend/              => FastAPI server
+│   │   ├── db.py             => Core database connection handling
+│   │   ├── db_operations.py  => High-level database operations
+│   │   ├── main.py           => Main entry point
+│   │   ├── routes.py         => API routes
+│   │   └── utils.py          => Logging utilities
+│   ├── workers/
+│   │   ├── scanner.py        => Scans videos directory
+│   │   ├── prepare.py        => Calls AI API
+│   │   ├── processor.py      => Runs ffmpeg
+│   │   ├── approver.py       => Auto approve if set in ENV
+│   │   └── mover.py          => Handles file replacement
+│   ├── frontend/             => React + Vite UI
+│   └── nginx/
+│       ├── default.conf      => Production nginx config
+│       └── dev.conf          => Development nginx config (proxies to React dev server)
+├── .github/workflows/
+│   ├── docker-publish.yml       => Build & push on main (versioned + latest)
+│   └── docker-publish-alpha.yml => Build & push on alpha branch
+├── Dockerfile                => Production multi-stage build
+├── Dockerfile.dev            => Development build (hot-reload)
+├── docker-compose.dev.yml    => Dev compose with volume mounts
+├── entrypoint.sh             => Production entrypoint
+├── entrypoint.dev.sh         => Development entrypoint
+└── requirements.txt          => Python dependencies
 ```
 
 ---
@@ -49,15 +62,13 @@ VIDEO_DIR=/video-input
 OUTPUT_DIR=/video-output
 DB_PATH=/data/video_db.sqlite
 SCAN_INTERVAL=30
-FRONTEND_PORT=3000
-OPENAI_API_KEY=your_api_key
+OPENAI_API_KEY=<your_api_key>
 AUTO_CONFIRMED=true/false
 AUTO_ACCEPT=true/false
-HOST_CPU_MODEL="$(lscpu | grep 'Model name' | awk -F ':' '{print $2}' | xargs)"
-HOST_TOTAL_RAM="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
-HOST_GPU_MODEL="$(lspci | grep -E 'VGA|3D' | xargs)"
-HOST_OS="$(uname -s)"
-HOST_OS_VERSION="$(uname -r)"
+DB_TIMEOUT=30
+DB_MAX_RETRIES=3
+DB_RETRY_DELAY=0.1
+PROCESS_RETRY_DELAY=30
 ```
 
 ---
@@ -67,17 +78,38 @@ HOST_OS_VERSION="$(uname -r)"
 ### 1. Clone the Repo
 
 ```bash
-git clone https://github.com/your/repo.git
-cd video-optimizer
+git clone https://github.com/tinkeshwar/ai-video-optimizer.git
+cd ai-video-optimizer
 ```
 
 ### 2. Add Videos
 
-Place some `.mp4`, `.mov`, etc. files in the `videos/` folder.
+Place your video files (`.mp4`, `.mov`, `.avi`, etc.) in the input directory mapped to `/video-input`.
 
-### 3. Docker Compose YML File
+### 3. Using Docker Hub Image (Recommended)
 
-```bash
+The image is published to Docker Hub automatically. Create a `docker-compose.yml`:
+
+```yaml
+services:
+  ai-video-optimizer-app:
+    image: tinkeshwar/video-optimizer-ai:latest
+    container_name: ai-video-optimizer
+    env_file:
+      - .env
+    volumes:
+      - <path-to-config>:/data
+      - <path-to-video-directory>:/video-input
+      - <path-to-video-output>:/video-output
+    environment:
+      - SCAN_INTERVAL=30
+    ports:
+      - "<PORT>:8088"
+```
+
+### 4. Building Locally
+
+```yaml
 services:
   ai-video-optimizer-app:
     build:
@@ -89,21 +121,37 @@ services:
     volumes:
       - <path-to-config>:/data
       - <path-to-video-directory>:/video-input
-      - <path-to-video-other-directory>:/video-input/other-directory
       - <path-to-video-output>:/video-output
     environment:
-      - SCAN_INTERVAL=30 // in seconds
+      - SCAN_INTERVAL=30
     ports:
       - "<PORT>:8088"
-
 ```
+
+---
+
+## 🛠️ Development Setup
+
+A full development environment with hot-reload is available:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+This mounts source code as volumes so changes to backend, workers, and frontend are reflected immediately without rebuilding.
+
+| Service   | URL                     |
+|-----------|-------------------------|
+| App (nginx) | http://localhost:8088 |
+| Backend   | http://localhost:8000   |
+| Frontend  | http://localhost:3000   |
 
 ---
 
 ## 🌐 Access the App
 
-- **Frontend UI:** By default, access the application at [http://localhost:8088](http://localhost:8088)
-- **Custom Port:** To use a different port, modify the port mapping in your docker-compose.yml:
+- **Frontend UI:** [http://localhost:8088](http://localhost:8088)
+- **Custom Port:** Modify the port mapping in your `docker-compose.yml`:
   ```yaml
   ports:
     - "your_port:8088"
@@ -113,29 +161,12 @@ services:
 
 ## 👨‍💻 How It Works
 
-1. **Scanner Worker**
-   - Scans `VIDEO_DIR`
-   - Adds file to SQLite with metadata (via `ffprobe`)
-   - Sets status as `pending`
-
-2. **React UI**
-   - Lists all videos
-   - User can accept/reject videos
-
-3. **AI Optimizer Worker**
-   - Sends accepted videos to AI API
-   - Saves `ffmpeg` command
-   - Status becomes `ready`
-
-4. **Processor Worker**
-   - Executes `ffmpeg` using saved command
-   - Stores optimized file in `OUTPUT_DIR`
-   - Marks status as `optimized`
-
-5. **React UI (again)**
-   - User can accept/reject optimized file
-   - Accept → replace original
-   - Reject → delete new file
+1. **Scanner Worker** — Scans `VIDEO_DIR`, extracts metadata via `ffprobe`, adds to SQLite as `pending`
+2. **React UI** — Lists all videos, user can accept/reject
+3. **AI Optimizer Worker** — Sends accepted videos to OpenAI API, saves generated `ffmpeg` command, status becomes `ready`
+4. **Processor Worker** — Executes `ffmpeg` command, stores optimized file in `OUTPUT_DIR`, marks as `optimized`
+5. **React UI** — User accepts/rejects optimized file (accept → replace original, reject → delete)
+6. **Mover Worker** — Replaces original file with optimized version
 
 ---
 
@@ -143,8 +174,8 @@ services:
 
 ```text
 pending → confirmed → ready → optimized → accepted → replaced/failed
-         ↑    ↓          ↓           ↓           ↓
-      rejected     (AI)   (ffmpeg)  (User)    (Mover)
+            ↑    ↓       ↓         ↓          ↓
+         rejected   (AI)   (ffmpeg)  (User)   (Mover)
 ```
 
 ---
@@ -157,78 +188,34 @@ ffmpeg -i input.mp4 -vcodec libx265 -crf 28 output.mp4
 
 ---
 
-## 🧪 Testing
+## 🗄️ Database Concurrency Handling
 
-- Add videos to `/videos`
-- Accept from UI
-- AI worker will provide command
-- Processor will optimize and update UI
-- Accept/reject final optimized file
+The system uses SQLite with WAL mode and enhanced concurrency support for multiple workers:
+
+- 📝 Write-Ahead Logging (WAL) mode
+- 🔄 Connection pooling with configurable timeouts
+- 🔒 Thread-safe operations with automatic retry on locks
+- 🔁 Exponential backoff for retries
 
 ---
 
-## 🗄️ Database Concurrency Handling
+## 🔄 CI/CD
 
-The system uses SQLite with enhanced concurrency support to handle multiple workers accessing the database simultaneously:
+GitHub Actions workflows automatically build and push Docker images:
 
-### Features
+- **main branch** → `tinkeshwar/video-optimizer-ai:latest` + auto-versioned tag (e.g., `1.0.42`)
+- **alpha branch** → `tinkeshwar/video-optimizer-ai:alpha`
 
-- 📝 Write-Ahead Logging (WAL) mode for better concurrency
-- 🔄 Connection pooling with proper timeout settings
-- 🔒 Thread-safe database operations
-- 🔁 Automatic retry mechanism for locked database scenarios
-- ⏰ Configurable timeouts and retry settings
+Releases are auto-created on the main branch with incremented patch versions.
 
-### Environment Variables
-
-```env
-DB_TIMEOUT=30          # Database operation timeout in seconds
-DB_MAX_RETRIES=3       # Maximum number of retries for locked database
-DB_RETRY_DELAY=0.1     # Delay between retries in seconds
-PROCESS_RETRY_DELAY=30 # Delay between processing retries
-```
-
-### Concurrency Features
-
-1. **Connection Management**
-   - Pooled connections with proper cleanup
-   - Automatic connection retry on failures
-   - Configurable timeout settings
-
-2. **Transaction Handling**
-   - Proper transaction boundaries
-   - Automatic rollback on errors
-   - Write-ahead logging for better concurrency
-
-3. **Error Handling**
-   - Graceful handling of database locks
-   - Exponential backoff for retries
-   - Detailed error logging
-
-4. **Worker Integration**
-   - Standardized database access layer
-   - Consistent error handling across workers
-   - Proper resource cleanup
-
-### Best Practices
-
-- Use the `db_operations` module for all database operations
-- Implement proper error handling and retries
-- Keep transactions as short as possible
-- Monitor database locks and timeouts
-- Use appropriate isolation levels
-
-For debugging database issues:
-- Check the logs for lock conflicts
-- Monitor transaction durations
-- Review retry patterns
-- Adjust timeout and retry settings as needed
+---
 
 ## 📦 Build Notes
 
-- All code is modular and environment-driven
-- Each component is Dockerized
-- ffmpeg and ffprobe must be available in worker containers
+- Multi-stage Docker build (Python base → Node frontend build → final image)
+- Xvfb virtual display included for headless video processing
+- ffmpeg, ffprobe, vainfo, and GPU tools (pciutils, rocm-smi) available in container
+- Nginx reverse proxy serves frontend and proxies `/api/` to FastAPI backend
 
 ---
 
@@ -241,4 +228,3 @@ MIT — free to use and modify.
 ## 🙌 Credits
 
 Built by Tinkeshwar Singh & ChatGPT 💡
-
