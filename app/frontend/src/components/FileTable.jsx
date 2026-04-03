@@ -83,7 +83,7 @@ function FileTable({ status, onAction }) {
   }, [fetchFiles]);
 
   useEffect(() => {
-    if (['ready', 'pending', 'confirmed', 'optimized'].includes(status)) {
+    if (['ready', 'processing', 'pending', 'confirmed', 'optimized'].includes(status)) {
       const interval = setInterval(fetchFiles, 10000);
       return () => clearInterval(interval);
     }
@@ -237,7 +237,7 @@ function FileTable({ status, onAction }) {
               <Table.ColumnHeaderCell onClick={() => handleSort('original_size')} style={{ cursor: 'pointer' }}>
                 <Flex align="center" gap="1">Size <SortIcon col="original_size" /></Flex>
               </Table.ColumnHeaderCell>
-              {status === 'ready' && <Table.ColumnHeaderCell>Progress</Table.ColumnHeaderCell>}
+              {(status === 'ready' || status === 'processing') && <Table.ColumnHeaderCell>Progress</Table.ColumnHeaderCell>}
               <Table.ColumnHeaderCell onClick={() => handleSort('updated_at')} style={{ cursor: 'pointer' }}>
                 <Flex align="center" gap="1">Updated <SortIcon col="updated_at" /></Flex>
               </Table.ColumnHeaderCell>
@@ -277,7 +277,7 @@ function FileTable({ status, onAction }) {
                     {byteToHuman(Number(file.original_size))}
                     {file.optimized_size && ` → ${byteToHuman(Number(file.optimized_size))}`}
                   </Table.Cell>
-                  {status === 'ready' && (
+                  {(status === 'ready' || status === 'processing') && (
                     <Table.Cell>
                       {(() => {
                         const p = progressFromProbe(file.ffprobe_data, file.progress);
@@ -287,7 +287,7 @@ function FileTable({ status, onAction }) {
                               <Progress size="3" value={p.percent} variant="classic" style={{ flex: 1 }} />
                               <Text size="1" weight="bold">{p.percent}%</Text>
                             </Flex>
-                            <Text size="1" color="gray">ETA: {p.eta} · {p.size} · {p.processed}</Text>
+                            <Text size="1" color="gray">ETA: {p.eta} · {p.size} · {p.processed} · {p.speed}</Text>
                           </Flex>
                         );
                       })()}

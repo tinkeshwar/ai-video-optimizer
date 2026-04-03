@@ -8,8 +8,9 @@ import re
 import json
 from dataclasses import dataclass
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.db_operations import (
-    get_next_ready_video,
+    claim_next_ready_video,
     update_video_progress,
     update_video_status,
     update_video_estimated_size,
@@ -28,6 +29,7 @@ class Config:
     max_retry_delay: int = int(os.getenv("MAX_RETRY_DELAY", "300"))
     size_stability_tolerance: float = float(os.getenv("SIZE_STABILITY_TOLERANCE", "0.01"))  # 1% tolerance
     size_check_window: int = int(os.getenv("SIZE_CHECK_WINDOW", "10"))  # Number of lines to check
+    parallel_workers: int = int(os.getenv("PARALLEL_WORKERS", "1"))
 
 CONFIG = Config()
 
@@ -204,44 +206,66 @@ def process_video(video: Dict[str, Any]) -> bool:
 
     return False
 
-def main():
-    """Main loop for continuous video processing."""
-    logger.info("Starting video processor...")
+def worker_loop(worker_id: int):
+    """Worker loop that claims and processes videos."""
+    logger.info(f"Worker {worker_id} started.")
     consecutive_errors = 0
 
     while True:
         try:
-            video = get_next_ready_video()
+            video = claim_next_ready_video()
             if video:
+                logger.info(f"Worker {worker_id} claimed video {video['id']}: {video['filename']}")
                 if process_video(video):
                     consecutive_errors = 0
                 else:
                     consecutive_errors += 1
             else:
-                logger.debug("No videos to process. Sleeping...")
                 sleep(CONFIG.sleep_interval)
                 continue
 
             if consecutive_errors >= CONFIG.max_consecutive_errors:
-                logger.warning(f"Reached {consecutive_errors} consecutive errors. Taking a longer break...")
+                logger.warning(f"Worker {worker_id}: {consecutive_errors} consecutive errors. Taking a break...")
                 sleep(CONFIG.process_retry_delay * 2)
                 consecutive_errors = 0
             elif consecutive_errors > 0:
                 sleep(CONFIG.process_retry_delay)
 
         except KeyboardInterrupt:
-            logger.info("Received shutdown signal. Exiting gracefully...")
+            logger.info(f"Worker {worker_id} received shutdown signal.")
             break
         except Exception as e:
             consecutive_errors += 1
-            logger.exception(f"Main loop error: {e}")
+            logger.exception(f"Worker {worker_id} error: {e}")
             delay = min(CONFIG.process_retry_delay * (2 ** consecutive_errors), CONFIG.max_retry_delay)
-            logger.info(f"Waiting {delay} seconds before retry...")
             sleep(delay)
 
             if consecutive_errors >= CONFIG.max_consecutive_errors:
-                logger.critical(f"Too many consecutive errors ({consecutive_errors}). Exiting...")
-                raise SystemExit(1)
+                logger.critical(f"Worker {worker_id}: too many errors ({consecutive_errors}). Stopping.")
+                break
+
+
+def main():
+    """Main entry point — launches parallel workers."""
+    workers = CONFIG.parallel_workers
+    logger.info(f"Starting video processor with {workers} worker(s)...")
+
+    if workers <= 1:
+        worker_loop(0)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(worker_loop, i): i for i in range(workers)}
+        try:
+            for future in as_completed(futures):
+                wid = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Worker {wid} exited with error: {e}")
+        except KeyboardInterrupt:
+            logger.info("Received shutdown signal. Shutting down workers...")
+            executor.shutdown(wait=False, cancel_futures=True)
 
 if __name__ == "__main__":
     main()

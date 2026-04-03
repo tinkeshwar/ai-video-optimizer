@@ -94,6 +94,36 @@ def get_next_ready_video() -> Optional[Dict[str, Any]]:
     """
     return fetch("SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1", fetch_one=True)
 
+def claim_next_ready_video() -> Optional[Dict[str, Any]]:
+    """
+    Atomically claim the next ready video by setting its status to 'processing'.
+    Returns the claimed video or None if no ready videos exist.
+    """
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM videos WHERE status = 'ready' ORDER BY created_at ASC LIMIT 1")
+            row = cursor.fetchone()
+            if not row:
+                return None
+            video = dict(row)
+            cursor.execute(
+                "UPDATE videos SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'ready'",
+                (video["id"],)
+            )
+            if cursor.rowcount == 0:
+                return None
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, comment, created_at) VALUES (?, 'processing', 'Claimed for processing', CURRENT_TIMESTAMP)",
+                (video["id"],)
+            )
+            return video
+        except sqlite3.Error as e:
+            logger.error(f"Failed to claim next ready video: {e}")
+            raise DatabaseError(f"Failed to claim next ready video: {e}")
+        finally:
+            cursor.close()
+
 def update_video_command_and_system_info(video_id: int, ai_command: str, system_info: str, comment: str = None) -> None:
     """
     Update video record with AI command and system info, and log the status change in status_history.

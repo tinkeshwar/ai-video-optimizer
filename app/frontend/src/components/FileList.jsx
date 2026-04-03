@@ -7,7 +7,8 @@ import Dashboard from './Dashboard';
 const TAB_CONFIG = [
   { value: 'pending', label: 'Pending', color: 'yellow' },
   { value: 'confirmed', label: 'Confirmed', color: 'blue' },
-  { value: 'ready', label: 'Processing', color: 'indigo' },
+  { value: 'ready', label: 'Queued', color: 'indigo' },
+  { value: 'processing', label: 'Processing', color: 'violet' },
   { value: 'optimized', label: 'Optimized', color: 'green' },
   { value: 'replaced', label: 'Completed', color: 'grass' },
   { value: 'rejected', label: 'Rejected', color: 'orange' },

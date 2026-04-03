@@ -7,6 +7,7 @@ const STATUS_COLORS = {
   pending: 'yellow',
   confirmed: 'blue',
   ready: 'indigo',
+  processing: 'violet',
   optimized: 'green',
   accepted: 'grass',
   replaced: 'grass',
