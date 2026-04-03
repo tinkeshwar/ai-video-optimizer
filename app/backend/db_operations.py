@@ -184,7 +184,7 @@ def update_video_estimated_size(video_id: int, estimated_size: int) -> None:
     """
     execute_with_retry("UPDATE videos SET estimated_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (estimated_size, video_id))
 
-def update_final_output(video_id: int, output_path: str, codec: str, optimized_size: int, comment: str = None) -> None:
+def update_final_output(video_id: int, output_path: str, codec: str, optimized_size: int, comment: str = None, ffprobe_data_new: str = None) -> None:
     """
     Update the final output path and codec of a video and log the status change in status_history.
     """
@@ -192,8 +192,8 @@ def update_final_output(video_id: int, output_path: str, codec: str, optimized_s
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE videos SET optimized_size = ?, status = 'optimized', optimized_path = ?, new_codec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (optimized_size, output_path, codec, video_id)
+                "UPDATE videos SET optimized_size = ?, status = 'optimized', optimized_path = ?, new_codec = ?, ffprobe_data_new = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (optimized_size, output_path, codec, ffprobe_data_new, video_id)
             )
             cursor.execute(
                 "INSERT INTO status_history (video_id, status, comment, created_at) VALUES (?, 'optimized', ?, CURRENT_TIMESTAMP)",

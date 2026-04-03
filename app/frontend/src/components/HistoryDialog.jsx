@@ -37,9 +37,9 @@ function HistoryDialog({ open, filename, history, onClose }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Flex justify="between" align="center" mb="3">
-          <Text size="3" weight="bold">📜 History — {filename}</Text>
-          <Button size="1" variant="ghost" onClick={onClose}><Cross2Icon /></Button>
+        <Flex justify="between" align="center" mb="3" gap="2">
+          <Text size="3" weight="bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>📜 History — {filename}</Text>
+          <Button size="1" variant="ghost" onClick={onClose} style={{ flexShrink: 0 }}><Cross2Icon /></Button>
         </Flex>
         {(!history || history.length === 0) ? (
           <Text size="2" color="gray">No history available.</Text>
@@ -49,7 +49,7 @@ function HistoryDialog({ open, filename, history, onClose }) {
               <Flex key={i} align="center" gap="3" p="2" style={{ borderLeft: '2px solid var(--history-border)', paddingLeft: 12 }}>
                 <Badge size="1" color={STATUS_COLORS[h.status] || 'gray'}>{h.status}</Badge>
                 <Text size="1" color="gray">{relativeTime(h.created_at)}</Text>
-                {h.comment && <Text size="1">— {h.comment}</Text>}
+                {h.comment && <Text size="1" style={{ wordBreak: 'break-word', minWidth: 0 }}>— {h.comment}</Text>}
               </Flex>
             ))}
           </Flex>

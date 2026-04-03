@@ -374,6 +374,7 @@ function FileTable({ status, onAction }) {
         filename={commandModal?.filename}
         command={commandModal?.ai_command}
         ffprobeData={commandModal?.ffprobe_data}
+        ffprobeDataNew={commandModal?.ffprobe_data_new}
         onClose={() => setCommandModal(null)}
         onSave={async (cmd) => {
           try {
