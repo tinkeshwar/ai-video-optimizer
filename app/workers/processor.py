@@ -105,7 +105,18 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
                             if len(estimated_sizes) > CONFIG.size_check_window:
                                 estimated_sizes.pop(0)
 
-                            # Check if last 10 sizes are stable and reduction ratio is too low
+                            # Cancel if estimated size >= original (no benefit)
+                            if estimated_final_size >= original_size:
+                                logger.info(f"Aborting: Estimated size {estimated_final_size/1024/1024:.2f}MB >= original {original_size/1024/1024:.2f}MB")
+                                process.terminate()
+                                process.wait(timeout=5)
+                                if output_path.exists():
+                                    output_path.unlink()
+                                update_video_status(video_id, "re-confirmed",
+                                    comment=f"Aborted: estimated size ({estimated_final_size/1024/1024:.1f}MB) >= original ({original_size/1024/1024:.1f}MB)")
+                                return False, "", "ok", None
+
+                            # Check if last N sizes are stable and reduction ratio is too low
                             if len(estimated_sizes) == CONFIG.size_check_window:
                                 max_size = max(estimated_sizes)
                                 min_size = min(estimated_sizes)
@@ -115,10 +126,11 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
                                                     f"with reduction ratio {reduction_ratio*100:.2f}% below threshold.")
                                         process.terminate()
                                         process.wait(timeout=5)
+                                        if output_path.exists():
+                                            output_path.unlink()
                                         update_video_status(video_id, "re-confirmed",
                                             comment=f"Aborted: estimated reduction {reduction_ratio*100:.1f}% below {CONFIG.min_reduction_ratio*100:.0f}% threshold")
-                                        return False, "", "ok"
-                                    
+                                        return False, "", "ok", None
             except subprocess.TimeoutExpired:
                 logger.warning("Process termination timeout. Forcing kill.")
                 process.kill()
@@ -127,7 +139,7 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
             return_code = process.wait(timeout=10)
             if return_code != 0:
                 logger.error(f"ffmpeg failed with return code {return_code}")
-                return False, "", f"ffmpeg exited with code {return_code}"
+                return False, "", f"ffmpeg exited with code {return_code}", None
 
         codec = subprocess.run(
             [
@@ -140,14 +152,24 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
             check=True
         ).stdout.strip()
 
-        return True, codec, "ok"
+        ffprobe_json = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-show_format", "-show_streams",
+                "-of", "json", str(output_path)
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.strip()
+
+        return True, codec, "ok", ffprobe_json
 
     except subprocess.CalledProcessError as e:
         logger.error(f"ffmpeg subprocess error: {e.stderr}")
-        return False, "", f"ffmpeg error: {e.stderr[:200] if e.stderr else 'unknown'}"
+        return False, "", f"ffmpeg error: {e.stderr[:200] if e.stderr else 'unknown'}", None
     except Exception as e:
         logger.exception(f"Unexpected error in run_ffmpeg: {e}")
-        return False, "", f"Unexpected error: {str(e)[:200]}"
+        return False, "", f"Unexpected error: {str(e)[:200]}", None
 
 def process_video(video: Dict[str, Any]) -> bool:
     """Process a single video and handle its lifecycle."""
@@ -160,13 +182,13 @@ def process_video(video: Dict[str, Any]) -> bool:
         return False
 
     try:
-        success, codec, status = run_ffmpeg(str(input_path), str(output_path), video)
+        success, codec, status, ffprobe_data_new = run_ffmpeg(str(input_path), str(output_path), video)
         if success and status == "ok":
             optimized_size = output_path.stat().st_size
             original_size = video.get("original_size", 0)
             saved = original_size - optimized_size if original_size else 0
             comment = f"Optimized: {original_size/1e6:.1f}MB → {optimized_size/1e6:.1f}MB (saved {saved/1e6:.1f}MB, codec: {codec})"
-            if update_final_output(video["id"], str(output_path), codec, optimized_size, comment=comment):
+            if update_final_output(video["id"], str(output_path), codec, optimized_size, comment=comment, ffprobe_data_new=ffprobe_data_new):
                 logger.info(f"Successfully optimized video: {input_path.name}")
                 return True
         elif status == "ok":
