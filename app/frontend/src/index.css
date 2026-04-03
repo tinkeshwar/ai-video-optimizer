@@ -11,3 +11,49 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Theme-aware custom properties */
+:root, .radix-themes {
+  --surface-bg: #ffffff;
+  --header-bg: #f0f4ff;
+  --header-border: #d0d7e6;
+  --filter-bg: #f5f7fb;
+  --row-alt-bg: #f8f9fc;
+  --expanded-bg: #f0f4fa;
+  --code-bg: #e8edf6;
+  --card-bg: #f8f9fc;
+  --card-border: #dde3ef;
+  --card-accent-bg: #eef6ee;
+  --overlay-bg: rgba(0, 0, 0, 0.4);
+  --dialog-bg: #ffffff;
+  --dialog-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  --meta-bg: #f5f7fb;
+  --meta-border: #dde3ef;
+  --meta-row-border: #eef0f5;
+  --history-border: #d0d7e6;
+}
+
+.dark, :is(.dark) .radix-themes, .radix-themes[data-is-root-theme][class~="dark"] {
+  --surface-bg: var(--color-background);
+  --header-bg: #1a1d2e;
+  --header-border: #2a2d3e;
+  --filter-bg: #1e2130;
+  --row-alt-bg: rgba(255, 255, 255, 0.03);
+  --expanded-bg: #1a1d2e;
+  --code-bg: #252838;
+  --card-bg: #1e2130;
+  --card-border: #2a2d3e;
+  --card-accent-bg: #1a2e1a;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --dialog-bg: #1e2130;
+  --dialog-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --meta-bg: #1a1d2e;
+  --meta-border: #2a2d3e;
+  --meta-row-border: #252838;
+  --history-border: #2a2d3e;
+}

@@ -42,11 +42,24 @@ jobs:
           git tag ${{ steps.version.outputs.version }}
           git push origin ${{ steps.version.outputs.version }}
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          prev_tag="${{ steps.previoustag.outputs.latest_tag }}"
+          delimiter="$(openssl rand -hex 8)"
+          echo "body<<${delimiter}" >> $GITHUB_OUTPUT
+          echo "## What's Changed" >> $GITHUB_OUTPUT
+          git log ${prev_tag}..HEAD --pretty=format:"- %s (%h)" --no-merges >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${prev_tag}...${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
+          body: ${{ steps.notes.outputs.body }}
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}

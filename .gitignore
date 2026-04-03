@@ -11,3 +11,7 @@ dist
 .vscode
 .idea
 *.iml
+data
+video-input
+video-output
+__pycache__

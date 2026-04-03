@@ -22,8 +22,11 @@ def confirm_pending_videos():
         logger.info("No pending videos to confirm.")
         return
     
-    ids = [row[0] for row in pending_videos]
-    update_status_of_multiple_videos(ids, 'confirmed')
+    ids = [v["id"] for v in pending_videos]
+    
+    comment = "Auto confirmed"
+
+    update_status_of_multiple_videos(ids, 'confirmed', comment=comment)
     logger.info(f"Confirmed {len(ids)} pending videos.")
 
 
@@ -37,8 +40,11 @@ def accept_optimized_videos():
     if not optimized_videos:
         logger.info("No optimized videos to accept.")
         return
-    ids = [row[0] for row in optimized_videos]
-    update_status_of_multiple_videos(ids, 'accepted')
+    ids = [v["id"] for v in optimized_videos]
+
+    comment = "Auto accepted"
+
+    update_status_of_multiple_videos(ids, 'accepted', comment=comment)
     logger.info(f"Accepted {len(ids)} optimized videos.")
 
 def main():

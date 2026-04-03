@@ -25,6 +25,12 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 sleep 5
 
+# Start virtual X server
+echo "Starting virtual X server on DISPLAY $DISPLAY..."
+Xvfb :99 -screen 0 1280x720x24 &
+# Small sleep to give Xvfb time to initialize
+sleep 5
+
 # Start workers
 echo "Starting scanner..."
 python workers/scanner.py &

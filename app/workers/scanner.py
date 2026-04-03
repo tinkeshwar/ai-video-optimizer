@@ -14,6 +14,7 @@ from backend.db_operations import (
 # === Configuration ===
 VIDEO_DIR = os.getenv("VIDEO_DIR", "/video-input")
 SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 30))
+FILE_STABILITY_DELAY = float(os.getenv("FILE_STABILITY_DELAY", 2))
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov'}
 
 
@@ -23,6 +24,17 @@ def get_video_files(directory: str) -> Iterator[Path]:
     for path in Path(directory).rglob("*"):
         if path.suffix.lower() in VIDEO_EXTENSIONS:
             yield path.resolve()
+
+
+def is_file_stable(filepath: Path) -> bool:
+    """Check if file size is stable (not being copied/written)."""
+    try:
+        size_before = filepath.stat().st_size
+        time.sleep(FILE_STABILITY_DELAY)
+        size_after = filepath.stat().st_size
+        return size_before == size_after and size_after > 0
+    except OSError:
+        return False
 
 
 def get_video_metadata_and_codec(filepath: Path) -> Optional[dict]:
@@ -55,8 +67,11 @@ def scan_and_insert() -> None:
 
     for filepath in get_video_files(VIDEO_DIR):
         try:
-            # Check if file exists using the new db_operations module
             if get_video_by_path(str(filepath)):
+                continue
+
+            if not is_file_stable(filepath):
+                logger.info(f"Skipping {filepath.name}: file still being written.")
                 continue
 
             data = get_video_metadata_and_codec(filepath)
@@ -75,7 +90,8 @@ def scan_and_insert() -> None:
                     filename=filepath.name,
                     metadata=metadata,
                     codec=codec,
-                    size=size
+                    size=size,
+                    comment=f"Scanned from {filepath.parent}"
                 )
                 new_files.append(filepath)
                 logger.debug(f"Successfully inserted video: {filepath.name}")

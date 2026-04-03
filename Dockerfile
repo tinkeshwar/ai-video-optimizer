@@ -25,9 +25,22 @@ WORKDIR /app
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Install dependencies
-RUN apt-get update && apt-get install -y ffmpeg pciutils rocm-smi nginx vainfo && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install dependencies (including Xvfb and necessary fonts/libs)
+RUN apt-get update && \
+    apt-get install -y \
+        ffmpeg \
+        pciutils \
+        rocm-smi \
+        nginx \
+        vainfo \
+        xvfb \
+        x11-utils \
+        x11-xserver-utils \
+        xauth \
+        libx11-6 \
+        libgl1 \
+        fonts-dejavu-core \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-base /app/backend ./backend
 COPY --from=python-base /app/workers ./workers
@@ -40,5 +53,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     chmod +x /entrypoint.sh
 
 EXPOSE 8088
+
+# Set DISPLAY so apps know where the fake X server is
+ENV DISPLAY=:99
 
 ENTRYPOINT ["/entrypoint.sh"]
