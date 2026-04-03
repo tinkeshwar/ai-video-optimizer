@@ -1,0 +1,23 @@
+services:
+  ai-video-optimizer-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ai-video-optimizer-dev
+    env_file:
+      - .env
+    volumes:
+      # Source code mounts for hot-reload
+      - ./app/backend:/app/backend
+      - ./app/workers:/app/workers
+      - ./app/frontend:/app/frontend
+      # Dev nginx config
+      - ./app/nginx/dev.conf:/etc/nginx/sites-available/default
+      # Data and video directories
+      - ./data:/data
+      - ./video-input:/video-input
+      - ./video-output:/video-output
+    environment:
+      - SCAN_INTERVAL=30
+    ports:
+      - "8088:8088"

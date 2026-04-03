@@ -164,7 +164,10 @@ def process_videos(status: str, regenerate: bool = False):
         command = generate_ai_command(prompt)
         if command:
             command = extract_ffmpeg_command(command)
-            update_video_command_and_system_info(video["id"], command, json.dumps(system_info, indent=2))
+            update_video_command_and_system_info(
+                video["id"], command, json.dumps(system_info, indent=2),
+                comment=f"AI command generated using {AI_MODEL}" if not regenerate else f"AI command regenerated using {AI_MODEL}"
+            )
             logger.info(f"[Saved] AI command saved for video ID: {video['id']}")
         else:
             logger.warning(f"[Skipped] AI command generation failed for video ID: {video['id']}")

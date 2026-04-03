@@ -115,7 +115,8 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
                                                     f"with reduction ratio {reduction_ratio*100:.2f}% below threshold.")
                                         process.terminate()
                                         process.wait(timeout=5)
-                                        update_video_status(video_id, "re-confirmed")
+                                        update_video_status(video_id, "re-confirmed",
+                                            comment=f"Aborted: estimated reduction {reduction_ratio*100:.1f}% below {CONFIG.min_reduction_ratio*100:.0f}% threshold")
                                         return False, "", "ok"
                                     
             except subprocess.TimeoutExpired:
@@ -126,7 +127,7 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
             return_code = process.wait(timeout=10)
             if return_code != 0:
                 logger.error(f"ffmpeg failed with return code {return_code}")
-                return False, "", "not ok"
+                return False, "", f"ffmpeg exited with code {return_code}"
 
         codec = subprocess.run(
             [
@@ -143,10 +144,10 @@ def run_ffmpeg(input_path: str, output_path: str, video: Dict[str, Any]) -> Tupl
 
     except subprocess.CalledProcessError as e:
         logger.error(f"ffmpeg subprocess error: {e.stderr}")
-        return False, "", "not ok"
+        return False, "", f"ffmpeg error: {e.stderr[:200] if e.stderr else 'unknown'}"
     except Exception as e:
         logger.exception(f"Unexpected error in run_ffmpeg: {e}")
-        return False, "", "not ok"
+        return False, "", f"Unexpected error: {str(e)[:200]}"
 
 def process_video(video: Dict[str, Any]) -> bool:
     """Process a single video and handle its lifecycle."""
@@ -155,25 +156,29 @@ def process_video(video: Dict[str, Any]) -> bool:
 
     if not input_path.exists():
         logger.error(f"Input file not found: {input_path}")
-        update_video_status(video["id"], "failed")
+        update_video_status(video["id"], "failed", comment=f"Input file not found: {input_path}")
         return False
 
     try:
         success, codec, status = run_ffmpeg(str(input_path), str(output_path), video)
         if success and status == "ok":
             optimized_size = output_path.stat().st_size
-            if update_final_output(video["id"], str(output_path), codec, optimized_size):
+            original_size = video.get("original_size", 0)
+            saved = original_size - optimized_size if original_size else 0
+            comment = f"Optimized: {original_size/1e6:.1f}MB → {optimized_size/1e6:.1f}MB (saved {saved/1e6:.1f}MB, codec: {codec})"
+            if update_final_output(video["id"], str(output_path), codec, optimized_size, comment=comment):
                 logger.info(f"Successfully optimized video: {input_path.name}")
                 return True
         elif status == "ok":
             logger.error(f"ffmpeg processing aborted for video due to threshold: {input_path.name}")
-            update_video_status(video["id"], "re-confirmed")
+            update_video_status(video["id"], "re-confirmed",
+                comment="Aborted: output size too close to original")
         else:
             logger.warning(f"Processing failed for video: {input_path.name}")
-            update_video_status(video["id"], "failed")
+            update_video_status(video["id"], "failed", comment=f"Processing failed: {status}")
     except Exception as e:
         logger.exception(f"Error processing video {input_path.name}: {e}")
-        update_video_status(video["id"], "failed")
+        update_video_status(video["id"], "failed", comment=f"Error: {str(e)[:200]}")
 
     return False
 

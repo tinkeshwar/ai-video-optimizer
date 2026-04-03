@@ -16,23 +16,23 @@ def replace_files(original_path: str, optimized_path: str, video_id: int) -> boo
     try:
         if not os.path.exists(original_path):
             logger.error(f"[Missing] Original file does not exist: {original_path}")
-            update_video_status(video_id, 'failed')
+            update_video_status(video_id, 'failed', comment=f"Original file missing: {original_path}")
             return False
 
         if not os.path.exists(optimized_path):
             logger.error(f"[Missing] Optimized file does not exist: {optimized_path}")
-            update_video_status(video_id, 'failed')
+            update_video_status(video_id, 'failed', comment=f"Optimized file missing: {optimized_path}")
             return False
 
         os.remove(original_path)
         shutil.move(optimized_path, original_path)
-        update_video_status(video_id, 'replaced')
+        update_video_status(video_id, 'replaced', comment="Replaced original with optimized file")
         logger.info(f"[Replaced] {original_path}")
         return True
 
     except Exception as e:
         logger.error(f"[Error] Failed to replace {original_path}: {e}")
-        update_video_status(video_id, 'failed')
+        update_video_status(video_id, 'failed', comment=f"Replace failed: {str(e)[:200]}")
         return False
 
 def process_batch():
