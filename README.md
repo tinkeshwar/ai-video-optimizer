@@ -300,10 +300,10 @@ The scanner extracts all audio and subtitle streams from each video during scan 
 
 | Indicator | Condition | Auto-approve | Action on confirm |
 |---|---|---|---|
-| ⚪ White | Single audio, 0–1 subtitle | ✅ Yes | Auto-selects audio, removes subtitles |
-| 🟢 Green | Single audio, 2+ subtitles | ✅ Yes | Opens stream selection dialog |
-| 🟡 Yellow | Multiple audio, 0–1 subtitle | ❌ No | Opens stream selection dialog |
-| 🔴 Red | Multiple audio, 2+ subtitles | ❌ No | Opens stream selection dialog |
+| ⚪ Single Audio-Single Sub | Single audio, 0–1 subtitle | ✅ Yes | Auto-selects audio, removes subtitles |
+| 🟢 Single Audio-Multi Sub | Single audio, 2+ subtitles | ✅ Yes | Opens stream selection dialog |
+| 🟡 Multi Audio-Single Sub | Multiple audio, 0–1 subtitle | ❌ No | Opens stream selection dialog |
+| 🔴 Multi Audio-Multi Sub | Multiple audio, 2+ subtitles | ❌ No | Opens stream selection dialog |
 
 - Row background and filename text are tinted to match the tier color
 - A **Stream Tier** filter dropdown on the pending tab allows filtering by tier

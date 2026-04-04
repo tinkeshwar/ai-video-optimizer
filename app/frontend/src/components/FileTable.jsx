@@ -72,6 +72,7 @@ function FileTable({ status, onAction }) {
           size: toByte(sizeFilter), codec: toCodec(codecFilter),
           name: fileNameSearch, directory: filePathSearch,
           sort_by: sortBy, sort_order: sortOrder,
+          ...(status === 'pending' && streamTierFilter !== 'all' ? { stream_tier: streamTierFilter } : {}),
         },
       });
       setFiles(response.data.list);
@@ -83,7 +84,7 @@ function FileTable({ status, onAction }) {
     } finally {
       if (!background) setLoading(false);
     }
-  }, [currentPage, sizeFilter, codecFilter, fileNameSearch, filePathSearch, sortBy, sortOrder, status, toCodec]);
+  }, [currentPage, sizeFilter, codecFilter, fileNameSearch, filePathSearch, sortBy, sortOrder, status, toCodec, streamTierFilter]);
 
   useEffect(() => {
     initialLoadDone.current = false;
@@ -280,10 +281,10 @@ function FileTable({ status, onAction }) {
   };
 
   const toggleAll = () => {
-    if (selected.size === filteredFiles.length) {
+    if (selected.size === files.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filteredFiles.map((f) => f.id)));
+      setSelected(new Set(files.map((f) => f.id)));
     }
   };
 
@@ -291,11 +292,6 @@ function FileTable({ status, onAction }) {
     if (!history) return 0;
     return history.filter((h) => ['confirmed', 're-confirmed'].includes(h.status)).length;
   };
-
-  const filteredFiles = useMemo(() => {
-    if (status !== 'pending' || streamTierFilter === 'all') return files;
-    return files.filter(f => getStreamTier(f) === streamTierFilter);
-  }, [files, streamTierFilter, status]);
 
   const streamModalAudio = useMemo(() => safeParseJson(streamModal?.audio_streams), [streamModal]);
   const streamModalSubs = useMemo(() => safeParseJson(streamModal?.subtitle_streams), [streamModal]);
@@ -354,7 +350,7 @@ function FileTable({ status, onAction }) {
             <Table.Row>
               {hasActions && (
                 <Table.ColumnHeaderCell style={{ width: 32 }}>
-                  <Checkbox checked={selected.size === filteredFiles.length && filteredFiles.length > 0} onCheckedChange={toggleAll} />
+                  <Checkbox checked={selected.size === files.length && files.length > 0} onCheckedChange={toggleAll} />
                 </Table.ColumnHeaderCell>
               )}
               <Table.ColumnHeaderCell onClick={() => handleSort('filename')} style={{ cursor: 'pointer' }}>
@@ -379,7 +375,7 @@ function FileTable({ status, onAction }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {filteredFiles.map((file, index) => (
+            {files.map((file, index) => (
               <React.Fragment key={file.id}>
                 <Table.Row style={{ backgroundColor: TIER_ROW_BG[getStreamTier(file)] || (index % 2 === 0 ? 'var(--row-alt-bg)' : 'transparent') }}>
                   {hasActions && (

@@ -101,8 +101,27 @@ def get_all_videos(page: int = 1, limit: int = 10):
         raise HTTPException(status_code=404, detail="No videos found")
     return [dict(row) for row in rows]
 
+TIER_SQL = {
+    'white': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') = 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') < 2
+    )""",
+    'green': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') = 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') >= 2
+    )""",
+    'yellow': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') > 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') < 2
+    )""",
+    'red': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') > 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') >= 2
+    )""",
+}
+
 @router.get("/api/videos/{status}")
-def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None, name: str = None, directory: str = None, sort_by: str = None, sort_order: str = 'asc'):
+def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None, name: str = None, directory: str = None, sort_by: str = None, sort_order: str = 'asc', stream_tier: str = None):
     if status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -121,6 +140,8 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
     if directory:
         filters.append("filepath LIKE ?")
         params.append(f"%{directory}%")
+    if stream_tier and stream_tier in TIER_SQL:
+        filters.append(TIER_SQL[stream_tier])
     
     where_clause = " AND ".join(filters)
     
