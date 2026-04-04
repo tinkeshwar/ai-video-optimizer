@@ -31,6 +31,7 @@ function FileTable({ status, onAction }) {
   const [codecFilter, setCodecFilter] = useState('all');
   const [fileNameSearch, setFileNameSearch] = useState('');
   const [filePathSearch, setFilePathSearch] = useState('');
+  const [streamTierFilter, setStreamTierFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(new Set());
@@ -150,11 +151,12 @@ function FileTable({ status, onAction }) {
       const file = files.find(f => f.id === id);
       const audio = safeParseJson(file?.audio_streams);
       const subs = safeParseJson(file?.subtitle_streams);
+      // Multi-audio or has subtitles — open stream selection dialog
       if (audio.length > 1 || subs.length > 0) {
         setStreamModal(file);
         return;
       }
-      // Single audio, no subs — auto-select and confirm via streams endpoint
+      // Single audio, no subs — auto-select and confirm
       if (audio.length === 1) {
         handleStreamConfirm(id, audio[0], null);
         return;
@@ -195,12 +197,31 @@ function FileTable({ status, onAction }) {
     return sel ? formatStreamLabel(sel) : 'None';
   };
 
-  const needsManualStream = (file) => {
-    if (status !== 'pending') return false;
+  const getStreamTier = (file) => {
+    if (status !== 'pending') return null;
     const audio = safeParseJson(file.audio_streams);
     const subs = safeParseJson(file.subtitle_streams);
-    return audio.length > 1 || subs.length > 0;
+    if (audio.length > 1 && subs.length >= 2) return 'red';
+    if (audio.length > 1) return 'yellow';
+    if (audio.length === 1 && subs.length >= 2) return 'green';
+    return 'white';
   };
+
+  const TIER_ROW_BG = {
+    red: 'rgba(255, 0, 0, 0.08)',
+    yellow: 'rgba(255, 180, 0, 0.08)',
+    green: 'rgba(0, 180, 0, 0.08)',
+  };
+
+  const TIER_TOOLTIP = {
+    red: 'Multiple audio & subtitles — manual selection required, no auto-approve',
+    yellow: 'Multiple audio — manual selection required, no auto-approve',
+    green: 'Single audio, multiple subtitles — auto-approve eligible, subtitle selection available',
+    white: 'Single audio, no/single subtitle — auto-approve eligible',
+  };
+
+  const TIER_EMOJI = { red: '🔴', yellow: '🟡', green: '🟢', white: '⚪' };
+  const TIER_TEXT_COLOR = { red: 'red', yellow: 'orange', green: 'green' };
 
   const handleStreamConfirm = async (id, audioObj, subObj) => {
     try {
@@ -224,8 +245,7 @@ function FileTable({ status, onAction }) {
       const eligible = files.filter(f => {
         if (!ids.includes(f.id)) return false;
         const audio = safeParseJson(f.audio_streams);
-        const subs = safeParseJson(f.subtitle_streams);
-        return audio.length === 1 && subs.length === 0;
+        return audio.length === 1;
       });
       const skipped = ids.length - eligible.length;
       if (eligible.length > 0) {
@@ -235,7 +255,7 @@ function FileTable({ status, onAction }) {
             selected_audio: audio[0], selected_subtitle: null,
           });
         })).then(() => {
-          toast(`Confirmed ${eligible.length} video(s)${skipped ? `, skipped ${skipped} (multi-audio/subtitles)` : ''}`, 'success');
+          toast(`Confirmed ${eligible.length} video(s)${skipped ? `, skipped ${skipped} (multi-audio, require manual selection)` : ''}`, 'success');
           fetchFiles();
           onAction?.();
         }).catch(() => toast('Bulk confirm failed', 'error'));
@@ -260,10 +280,10 @@ function FileTable({ status, onAction }) {
   };
 
   const toggleAll = () => {
-    if (selected.size === files.length) {
+    if (selected.size === filteredFiles.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(files.map((f) => f.id)));
+      setSelected(new Set(filteredFiles.map((f) => f.id)));
     }
   };
 
@@ -271,6 +291,11 @@ function FileTable({ status, onAction }) {
     if (!history) return 0;
     return history.filter((h) => ['confirmed', 're-confirmed'].includes(h.status)).length;
   };
+
+  const filteredFiles = useMemo(() => {
+    if (status !== 'pending' || streamTierFilter === 'all') return files;
+    return files.filter(f => getStreamTier(f) === streamTierFilter);
+  }, [files, streamTierFilter, status]);
 
   const streamModalAudio = useMemo(() => safeParseJson(streamModal?.audio_streams), [streamModal]);
   const streamModalSubs = useMemo(() => safeParseJson(streamModal?.subtitle_streams), [streamModal]);
@@ -286,6 +311,7 @@ function FileTable({ status, onAction }) {
             codecFilter={codecFilter} setCodecFilter={setCodecFilter}
             fileNameSearch={fileNameSearch} setFileNameSearch={setFileNameSearch}
             filePathSearch={filePathSearch} setFilePathSearch={setFilePathSearch}
+            {...(status === 'pending' ? { streamTierFilter, setStreamTierFilter } : {})}
           />
         </Box>
         <Flex direction="column" align="center" justify="center" py="9" gap="2">
@@ -304,6 +330,7 @@ function FileTable({ status, onAction }) {
           codecFilter={codecFilter} setCodecFilter={setCodecFilter}
           fileNameSearch={fileNameSearch} setFileNameSearch={setFileNameSearch}
           filePathSearch={filePathSearch} setFilePathSearch={setFilePathSearch}
+          {...(status === 'pending' ? { streamTierFilter, setStreamTierFilter } : {})}
         />
         {hasActions && selected.size > 0 && (
           <Flex gap="2" mt="2" align="center">
@@ -327,7 +354,7 @@ function FileTable({ status, onAction }) {
             <Table.Row>
               {hasActions && (
                 <Table.ColumnHeaderCell style={{ width: 32 }}>
-                  <Checkbox checked={selected.size === files.length && files.length > 0} onCheckedChange={toggleAll} />
+                  <Checkbox checked={selected.size === filteredFiles.length && filteredFiles.length > 0} onCheckedChange={toggleAll} />
                 </Table.ColumnHeaderCell>
               )}
               <Table.ColumnHeaderCell onClick={() => handleSort('filename')} style={{ cursor: 'pointer' }}>
@@ -352,9 +379,9 @@ function FileTable({ status, onAction }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {files.map((file, index) => (
+            {filteredFiles.map((file, index) => (
               <React.Fragment key={file.id}>
-                <Table.Row style={{ backgroundColor: index % 2 === 0 ? 'var(--row-alt-bg)' : 'transparent' }}>
+                <Table.Row style={{ backgroundColor: TIER_ROW_BG[getStreamTier(file)] || (index % 2 === 0 ? 'var(--row-alt-bg)' : 'transparent') }}>
                   {hasActions && (
                     <Table.Cell>
                       <Checkbox checked={selected.has(file.id)} onCheckedChange={() => toggleSelect(file.id)} />
@@ -362,8 +389,8 @@ function FileTable({ status, onAction }) {
                   )}
                   <Table.Cell>
                     <Flex align="center" gap="1">
-                      <Text color={needsManualStream(file) ? 'orange' : undefined}>{file.filename}</Text>
-                      {needsManualStream(file) && <Tooltip content="Requires manual stream selection"><Text size="1">⚠️</Text></Tooltip>}
+                      <Text color={TIER_TEXT_COLOR[getStreamTier(file)] || undefined}>{file.filename}</Text>
+                      {getStreamTier(file) && <Tooltip content={TIER_TOOLTIP[getStreamTier(file)]}><Text size="1">{TIER_EMOJI[getStreamTier(file)]}</Text></Tooltip>}
                       <Tooltip content={file.filepath}><InfoCircledIcon /></Tooltip>
                       {(file.ai_command || file.ffprobe_data) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
                         <Tooltip content="View AI command">
