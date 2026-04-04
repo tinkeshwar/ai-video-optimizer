@@ -56,6 +56,25 @@ const Filters = ({
         </Select.Root>
       </Box>
 
+      {streamTierFilter !== undefined && (
+        <Box>
+          <Select.Root
+            id="stream-tier-filter"
+            value={streamTierFilter}
+            onValueChange={setStreamTierFilter}
+          >
+            <Select.Trigger aria-label="Filter by stream tier" />
+            <Select.Content>
+              <Select.Item value="all">All Tiers</Select.Item>
+              <Select.Item value="white">⚪ Single Audio-Single Sub</Select.Item>
+              <Select.Item value="green">🟢 Single Audio-Multi Sub</Select.Item>
+              <Select.Item value="yellow">🟡 Multi Audio-Single Sub</Select.Item>
+              <Select.Item value="red">🔴 Multi Audio-Multi Sub</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </Box>
+      )}
+
       <Box>
         <TextField.Root
           id="file-name-search"
@@ -81,25 +100,6 @@ const Filters = ({
           </TextField.Slot>
         </TextField.Root>
       </Box>
-
-      {streamTierFilter !== undefined && (
-        <Box>
-          <Select.Root
-            id="stream-tier-filter"
-            value={streamTierFilter}
-            onValueChange={setStreamTierFilter}
-          >
-            <Select.Trigger aria-label="Filter by stream tier" />
-            <Select.Content>
-              <Select.Item value="all">All Streams</Select.Item>
-              <Select.Item value="white">⚪ Single audio, 0-1 sub</Select.Item>
-              <Select.Item value="green">🟢 Single audio, 2+ subs</Select.Item>
-              <Select.Item value="yellow">🟡 Multi audio, 0-1 sub</Select.Item>
-              <Select.Item value="red">🔴 Multi audio, 2+ subs</Select.Item>
-            </Select.Content>
-          </Select.Root>
-        </Box>
-      )}
     </Flex>
   );
 };
