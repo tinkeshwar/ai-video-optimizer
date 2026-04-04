@@ -296,12 +296,20 @@ Pending → Queued → Processing → Optimized → Completed → Rejected → S
 
 ## 🎧 Audio & Subtitle Stream Selection
 
-When confirming a video from the pending screen:
+The scanner extracts all audio and subtitle streams from each video during scan and stores them as structured JSON. On the pending screen, each video is color-coded by its stream complexity:
 
-- **Single audio, no subtitles** — Auto-confirmed immediately
-- **Multiple audio streams or subtitles present** — Stream selection dialog opens (filename shown in orange with ⚠️ indicator)
-- User selects one audio stream (required) and optionally one subtitle stream
-- Bulk confirm only processes single-audio/no-subtitle videos; multi-stream videos are skipped with a notification
+| Indicator | Condition | Auto-approve | Action on confirm |
+|---|---|---|---|
+| ⚪ White | Single audio, 0–1 subtitle | ✅ Yes | Auto-selects audio, removes subtitles |
+| 🟢 Green | Single audio, 2+ subtitles | ✅ Yes | Opens stream selection dialog |
+| 🟡 Yellow | Multiple audio, 0–1 subtitle | ❌ No | Opens stream selection dialog |
+| 🔴 Red | Multiple audio, 2+ subtitles | ❌ No | Opens stream selection dialog |
+
+- Row background and filename text are tinted to match the tier color
+- A **Stream Tier** filter dropdown on the pending tab allows filtering by tier
+- The stream selection dialog requires one audio stream (mandatory) and optionally one subtitle stream — no subtitle selection means all subtitles are removed during conversion
+- **Bulk confirm** only processes single-audio videos (⚪ and 🟢); multi-audio videos (🟡 and 🔴) are skipped with a notification
+- **Auto-confirm** (`AUTO_CONFIRMED=true`) only applies to single-audio videos — multi-audio videos always require manual selection
 
 All non-pending tabs display the user's selected audio and subtitle streams in dedicated columns.
 

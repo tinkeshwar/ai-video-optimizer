@@ -11,6 +11,8 @@ const Filters = ({
   setFileNameSearch,
   filePathSearch,
   setFilePathSearch,
+  streamTierFilter,
+  setStreamTierFilter,
 }) => {
   return (
     <Flex gap="4" align="center" wrap="wrap">
@@ -79,6 +81,25 @@ const Filters = ({
           </TextField.Slot>
         </TextField.Root>
       </Box>
+
+      {streamTierFilter !== undefined && (
+        <Box>
+          <Select.Root
+            id="stream-tier-filter"
+            value={streamTierFilter}
+            onValueChange={setStreamTierFilter}
+          >
+            <Select.Trigger aria-label="Filter by stream tier" />
+            <Select.Content>
+              <Select.Item value="all">All Streams</Select.Item>
+              <Select.Item value="white">⚪ Single audio, 0-1 sub</Select.Item>
+              <Select.Item value="green">🟢 Single audio, 2+ subs</Select.Item>
+              <Select.Item value="yellow">🟡 Multi audio, 0-1 sub</Select.Item>
+              <Select.Item value="red">🔴 Multi audio, 2+ subs</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </Box>
+      )}
     </Flex>
   );
 };
