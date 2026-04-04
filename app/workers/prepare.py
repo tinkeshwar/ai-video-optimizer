@@ -90,21 +90,24 @@ def detect_gpu() -> Optional[str]:
     if env_gpu:
         return f"Host GPU: {env_gpu}"
 
-    gpu_detection_methods = [
-        (["rocm-smi", "--showproductname"], None, "AMD GPU (ROCm): {output}"),
-        (["vainfo"], "VAProfile", "VAAPI available"),
-        (["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], None, "NVIDIA GPU: {output}")
-    ]
+    nvidia_out = run_command(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"])
+    if nvidia_out:
+        return f"NVIDIA GPU: {nvidia_out.strip()}"
 
-    for command, keyword, message in gpu_detection_methods:
-        output = run_command(command)
-        if output and (not keyword or keyword in output):
-            return message.format(output=output.strip())
+    rocm_out = run_command(["rocm-smi", "--showproductname"])
+    if rocm_out:
+        import re
+        match = re.search(r"Card Series:\s+(.*)", rocm_out)
+        if match:
+            return f"AMD GPU (ROCm): {match.group(1).strip()}"
+
+    if os.path.exists("/dev/dri/renderD128"):
+        return "VAAPI available (/dev/dri/renderD128)"
 
     if platform.system().lower() == "linux":
         return detect_gpu_via_lspci()
 
-    return "GPU detection not supported on this OS without NVIDIA or ROCm tools"
+    return "CPU Fallback"
 
 
 def detect_gpu_via_lspci() -> Optional[str]:

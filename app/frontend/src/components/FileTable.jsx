@@ -388,7 +388,7 @@ function FileTable({ status, onAction }) {
                       <Text color={TIER_TEXT_COLOR[getStreamTier(file)] || undefined}>{file.filename}</Text>
                       {getStreamTier(file) && <Tooltip content={TIER_TOOLTIP[getStreamTier(file)]}><Text size="1">{TIER_EMOJI[getStreamTier(file)]}</Text></Tooltip>}
                       <Tooltip content={file.filepath}><InfoCircledIcon /></Tooltip>
-                      {(file.ai_command || file.ffprobe_data) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
+                      {(file.ai_command || file.ffprobe_data || file.system_info) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
                         <Tooltip content="View AI command">
                           <Button size="1" variant="ghost" onClick={() => setExpandedId(expandedId === file.id ? null : file.id)}>
                             <CodeIcon />
@@ -469,6 +469,17 @@ function FileTable({ status, onAction }) {
                   <Table.Row>
                     <Table.Cell colSpan={10} style={{ background: 'var(--expanded-bg)', padding: '12px 16px' }}>
                       <Flex gap="4" wrap="wrap">
+                        {file.system_info && (
+                          <Box style={{ flex: 1, minWidth: 280 }}>
+                            <Flex justify="between" align="center" mb="1">
+                              <Text size="1" color="gray" weight="bold">🖥️ System Info</Text>
+                              <Button size="1" variant="ghost" onClick={() => { navigator.clipboard.writeText(typeof file.system_info === 'string' ? file.system_info : JSON.stringify(file.system_info, null, 2)); toast('System info copied', 'info'); }}>Copy</Button>
+                            </Flex>
+                            <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
+                              {(() => { try { return JSON.stringify(JSON.parse(file.system_info), null, 2); } catch { return file.system_info; } })()}
+                            </pre>
+                          </Box>
+                        )}
                         {file.ffprobe_data && (
                           <Box style={{ flex: 1, minWidth: 280 }}>
                             <Flex justify="between" align="center" mb="1">
@@ -477,6 +488,17 @@ function FileTable({ status, onAction }) {
                             </Flex>
                             <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
                               {JSON.stringify(JSON.parse(file.ffprobe_data), null, 2)}
+                            </pre>
+                          </Box>
+                        )}
+                        {file.ffprobe_data_new && (
+                          <Box style={{ flex: 1, minWidth: 280 }}>
+                            <Flex justify="between" align="center" mb="1">
+                              <Text size="1" color="gray" weight="bold">📋 Output Metadata</Text>
+                              <Button size="1" variant="ghost" onClick={() => { navigator.clipboard.writeText(JSON.stringify(JSON.parse(file.ffprobe_data_new), null, 2)); toast('Output metadata copied', 'info'); }}>Copy</Button>
+                            </Flex>
+                            <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
+                              {JSON.stringify(JSON.parse(file.ffprobe_data_new), null, 2)}
                             </pre>
                           </Box>
                         )}
