@@ -40,9 +40,12 @@ def is_file_stable(filepath: Path) -> bool:
 def get_video_metadata_and_codec(filepath: Path) -> Optional[dict]:
     """Return both metadata and codec name for a video file."""
     cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_format", "-show_streams", "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name", str(filepath)
+        "ffprobe", "-v", "quiet", 
+        "-print_format", "json",
+        "-show_format", 
+        "-show_streams", 
+        "-show_entries", "format:stream=index,codec_type,codec_name,channel_layout,channels,bit_rate,tags",
+        str(filepath)
     ]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -78,10 +81,30 @@ def scan_and_insert() -> None:
             if not data:
                 continue
 
-            # Extract metadata and codec
-            metadata = json.dumps(data['format'], indent=2)
-            codec = data['streams'][0]['codec_name'] if 'streams' in data and data['streams'] else 'Unknown'
+            # Extract metadata, codec, and streams
+            metadata = json.dumps(data, indent=2)
+            streams = data.get('streams', [])
+            video_stream = next((s for s in streams if s.get('codec_type') == 'video'), None)
+            codec = video_stream['codec_name'] if video_stream else 'Unknown'
             size = filepath.stat().st_size
+
+            audio_streams = json.dumps([
+                {
+                    'index': s.get('index'), 'codec_name': s.get('codec_name'),
+                    'codec_type': 'audio', 'channels': s.get('channels'),
+                    'channel_layout': s.get('channel_layout'),
+                    'bit_rate': s.get('bit_rate'),
+                    'language': (s.get('tags') or {}).get('language', 'und')
+                } for s in streams if s.get('codec_type') == 'audio'
+            ])
+
+            subtitle_streams = json.dumps([
+                {
+                    'index': s.get('index'), 'codec_name': s.get('codec_name'),
+                    'codec_type': 'subtitle',
+                    'language': (s.get('tags') or {}).get('language', 'und')
+                } for s in streams if s.get('codec_type') == 'subtitle'
+            ])
 
             # Insert video using the new db_operations module
             try:
@@ -91,6 +114,8 @@ def scan_and_insert() -> None:
                     metadata=metadata,
                     codec=codec,
                     size=size,
+                    audio_streams=audio_streams,
+                    subtitle_streams=subtitle_streams,
                     comment=f"Scanned from {filepath.parent}"
                 )
                 new_files.append(filepath)

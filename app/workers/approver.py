@@ -1,9 +1,11 @@
 import os
+import json
 import time
 from backend.utils import logger
 from backend.db_operations import (
     get_videos_by_status,
-    update_status_of_multiple_videos
+    update_status_of_multiple_videos,
+    update_video_stream_selection
 )
 
 BATCH_SIZE = int(os.getenv("CONFIRM_BATCH_SIZE", 10))
@@ -21,13 +23,26 @@ def confirm_pending_videos():
     if not pending_videos:
         logger.info("No pending videos to confirm.")
         return
-    
-    ids = [v["id"] for v in pending_videos]
-    
-    comment = "Auto confirmed"
 
-    update_status_of_multiple_videos(ids, 'confirmed', comment=comment)
-    logger.info(f"Confirmed {len(ids)} pending videos.")
+    confirmed = 0
+    skipped = 0
+    for v in pending_videos:
+        audio = json.loads(v.get('audio_streams') or '[]')
+        if len(audio) == 1:
+            update_video_stream_selection(
+                v['id'],
+                selected_audio=json.dumps(audio[0]),
+                selected_subtitle=None,
+                comment='Auto confirmed (single audio stream)'
+            )
+            confirmed += 1
+        else:
+            skipped += 1
+
+    if confirmed:
+        logger.info(f"Auto confirmed {confirmed} single-audio videos.")
+    if skipped:
+        logger.info(f"Skipped {skipped} multi-audio videos (require manual selection).")
 
 
 

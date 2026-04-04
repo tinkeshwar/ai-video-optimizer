@@ -46,18 +46,18 @@ def fetch(query: str, params: Tuple = None, retries: int = None, fetch_one: bool
         finally:
             cursor.close()
 
-def insert_video(filepath: str, filename: str, metadata: str = None, codec: str = None, size: int = None, comment: str = None) -> int:
+def insert_video(filepath: str, filename: str, metadata: str = None, codec: str = None, size: int = None, audio_streams: str = None, subtitle_streams: str = None, comment: str = None) -> int:
     """
     Insert a new video record into the database and log the status as 'pending' in status_history.
     """
     query = """
-        INSERT INTO videos (filepath, filename, ffprobe_data, original_codec, original_size)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO videos (filepath, filename, ffprobe_data, original_codec, original_size, audio_streams, subtitle_streams)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """
     with transaction() as conn:
         cursor = conn.cursor()
         try:
-            cursor.execute(query, (filepath, filename, metadata, codec, size))
+            cursor.execute(query, (filepath, filename, metadata, codec, size, audio_streams, subtitle_streams))
             video_id = cursor.lastrowid
             cursor.execute(
                 "INSERT INTO status_history (video_id, status, comment, created_at) VALUES (?, 'pending', ?, CURRENT_TIMESTAMP)",
@@ -67,6 +67,27 @@ def insert_video(filepath: str, filename: str, metadata: str = None, codec: str 
         except sqlite3.Error as e:
             logger.error(f"Failed to insert video record: {e}")
             raise DatabaseError(f"Failed to insert video: {e}")
+        finally:
+            cursor.close()
+
+def update_video_stream_selection(video_id: int, selected_audio: str, selected_subtitle: str = None, comment: str = None) -> None:
+    """
+    Save user's audio/subtitle stream selection and set status to confirmed.
+    """
+    with transaction() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE videos SET selected_audio = ?, selected_subtitle = ?, status = 'confirmed', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (selected_audio, selected_subtitle, video_id)
+            )
+            cursor.execute(
+                "INSERT INTO status_history (video_id, status, comment, created_at) VALUES (?, 'confirmed', ?, CURRENT_TIMESTAMP)",
+                (video_id, comment or 'User selected audio/subtitle streams')
+            )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update stream selection: {e}")
+            raise DatabaseError(f"Failed to update stream selection: {e}")
         finally:
             cursor.close()
 

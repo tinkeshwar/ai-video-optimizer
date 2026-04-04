@@ -127,6 +127,10 @@ def init_db():
                 add_column_if_not_exists("videos", "system_info", "TEXT")
                 add_column_if_not_exists("videos", "estimated_size", "INTEGER")
                 add_column_if_not_exists("videos", "ffprobe_data_new", "TEXT")
+                add_column_if_not_exists("videos", "audio_streams", "TEXT")
+                add_column_if_not_exists("videos", "subtitle_streams", "TEXT")
+                add_column_if_not_exists("videos", "selected_audio", "TEXT")
+                add_column_if_not_exists("videos", "selected_subtitle", "TEXT")
 
                 # Create indexes for better performance
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_filepath ON videos(filepath)")
