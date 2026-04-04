@@ -10,10 +10,10 @@ const TAB_CONFIG = [
   { value: 'ready', label: 'Queued', color: 'indigo' },
   { value: 'processing', label: 'Processing', color: 'violet' },
   { value: 'optimized', label: 'Optimized', color: 'green' },
-  { value: 'replaced', label: 'Completed', color: 'grass' },
   { value: 'rejected', label: 'Rejected', color: 'orange' },
   { value: 'skipped', label: 'Skipped', color: 'gray' },
   { value: 'failed', label: 'Failed', color: 'red' },
+  { value: 'replaced', label: 'Completed', color: 'grass' },
 ];
 
 function FileList() {

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from backend.db import get_db
+from backend.db_operations import update_video_stream_selection
 
 router = APIRouter()
 
@@ -13,6 +15,10 @@ class BulkStatusUpdate(BaseModel):
 
 class CommandUpdate(BaseModel):
     ai_command: str
+
+class StreamSelection(BaseModel):
+    selected_audio: dict
+    selected_subtitle: Optional[dict] = None
 
 VALID_STATUSES = [
     "pending", "confirmed", "rejected", "ready", "processing", "optimized",
@@ -70,6 +76,20 @@ def update_video_command(video_id: int, payload: CommandUpdate):
         (video_id,)
     )
     return {"message": f"Command updated and video {video_id} queued for processing"}
+
+@router.put("/api/videos/{video_id}/streams")
+def update_video_streams(video_id: int, payload: StreamSelection):
+    import json
+    video = execute_query("SELECT id FROM videos WHERE id = ?", (video_id,), fetch_all=False)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    update_video_stream_selection(
+        video_id,
+        selected_audio=json.dumps(payload.selected_audio),
+        selected_subtitle=json.dumps(payload.selected_subtitle) if payload.selected_subtitle else None,
+        comment='User selected audio/subtitle streams'
+    )
+    return {"message": f"Stream selection saved and video {video_id} confirmed"}
 
 @router.get("/api/videos")
 def get_all_videos(page: int = 1, limit: int = 10):

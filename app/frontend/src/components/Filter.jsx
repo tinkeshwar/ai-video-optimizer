@@ -21,7 +21,7 @@ const Filters = ({
       <Box>
         <Select.Root
           id="size-filter"
-          defaultValue={sizeFilter}
+          value={sizeFilter}
           onValueChange={setSizeFilter}
         >
           <Select.Trigger aria-label="Filter by file size" />
@@ -42,7 +42,7 @@ const Filters = ({
       <Box>
         <Select.Root
           id="codec-filter"
-          defaultValue={codecFilter}
+          value={codecFilter}
           onValueChange={setCodecFilter}
         >
           <Select.Trigger aria-label="Filter by codec" />
