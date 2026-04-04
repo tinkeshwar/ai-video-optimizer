@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from backend.db import get_db
+from backend.db_operations import update_video_stream_selection
 
 router = APIRouter()
 
@@ -13,6 +15,10 @@ class BulkStatusUpdate(BaseModel):
 
 class CommandUpdate(BaseModel):
     ai_command: str
+
+class StreamSelection(BaseModel):
+    selected_audio: dict
+    selected_subtitle: Optional[dict] = None
 
 VALID_STATUSES = [
     "pending", "confirmed", "rejected", "ready", "processing", "optimized",
@@ -71,6 +77,20 @@ def update_video_command(video_id: int, payload: CommandUpdate):
     )
     return {"message": f"Command updated and video {video_id} queued for processing"}
 
+@router.put("/api/videos/{video_id}/streams")
+def update_video_streams(video_id: int, payload: StreamSelection):
+    import json
+    video = execute_query("SELECT id FROM videos WHERE id = ?", (video_id,), fetch_all=False)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    update_video_stream_selection(
+        video_id,
+        selected_audio=json.dumps(payload.selected_audio),
+        selected_subtitle=json.dumps(payload.selected_subtitle) if payload.selected_subtitle else None,
+        comment='User selected audio/subtitle streams'
+    )
+    return {"message": f"Stream selection saved and video {video_id} confirmed"}
+
 @router.get("/api/videos")
 def get_all_videos(page: int = 1, limit: int = 10):
     offset = (page - 1) * limit
@@ -81,8 +101,27 @@ def get_all_videos(page: int = 1, limit: int = 10):
         raise HTTPException(status_code=404, detail="No videos found")
     return [dict(row) for row in rows]
 
+TIER_SQL = {
+    'white': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') = 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') < 2
+    )""",
+    'green': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') = 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') >= 2
+    )""",
+    'yellow': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') > 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') < 2
+    )""",
+    'red': """(
+        (SELECT COUNT(*) FROM json_each(audio_streams) WHERE json_extract(value, '$.codec_type') = 'audio') > 1
+        AND (SELECT COUNT(*) FROM json_each(subtitle_streams) WHERE json_extract(value, '$.codec_type') = 'subtitle') >= 2
+    )""",
+}
+
 @router.get("/api/videos/{status}")
-def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None, name: str = None, directory: str = None, sort_by: str = None, sort_order: str = 'asc'):
+def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str = None, size: int = None, name: str = None, directory: str = None, sort_by: str = None, sort_order: str = 'asc', stream_tier: str = None):
     if status not in VALID_STATUSES:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -101,6 +140,8 @@ def get_specific_videos(status: str, page: int = 1, limit: int = 10, codec: str 
     if directory:
         filters.append("filepath LIKE ?")
         params.append(f"%{directory}%")
+    if stream_tier and stream_tier in TIER_SQL:
+        filters.append(TIER_SQL[stream_tier])
     
     where_clause = " AND ".join(filters)
     

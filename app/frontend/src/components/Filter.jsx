@@ -11,6 +11,8 @@ const Filters = ({
   setFileNameSearch,
   filePathSearch,
   setFilePathSearch,
+  streamTierFilter,
+  setStreamTierFilter,
 }) => {
   return (
     <Flex gap="4" align="center" wrap="wrap">
@@ -21,7 +23,7 @@ const Filters = ({
       <Box>
         <Select.Root
           id="size-filter"
-          defaultValue={sizeFilter}
+          value={sizeFilter}
           onValueChange={setSizeFilter}
         >
           <Select.Trigger aria-label="Filter by file size" />
@@ -42,7 +44,7 @@ const Filters = ({
       <Box>
         <Select.Root
           id="codec-filter"
-          defaultValue={codecFilter}
+          value={codecFilter}
           onValueChange={setCodecFilter}
         >
           <Select.Trigger aria-label="Filter by codec" />
@@ -53,6 +55,25 @@ const Filters = ({
           </Select.Content>
         </Select.Root>
       </Box>
+
+      {streamTierFilter !== undefined && (
+        <Box>
+          <Select.Root
+            id="stream-tier-filter"
+            value={streamTierFilter}
+            onValueChange={setStreamTierFilter}
+          >
+            <Select.Trigger aria-label="Filter by stream tier" />
+            <Select.Content>
+              <Select.Item value="all">All Tiers</Select.Item>
+              <Select.Item value="white">⚪ Single Audio-Single Sub</Select.Item>
+              <Select.Item value="green">🟢 Single Audio-Multi Sub</Select.Item>
+              <Select.Item value="yellow">🟡 Multi Audio-Single Sub</Select.Item>
+              <Select.Item value="red">🔴 Multi Audio-Multi Sub</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </Box>
+      )}
 
       <Box>
         <TextField.Root

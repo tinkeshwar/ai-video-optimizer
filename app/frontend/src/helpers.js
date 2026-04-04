@@ -24,6 +24,13 @@ export const relativeTime = (dateStr) => {
   return date.toLocaleDateString();
 };
 
+export const formatStreamLabel = (stream) => {
+  if (!stream) return '';
+  const obj = typeof stream === 'string' ? JSON.parse(stream) : stream;
+  const parts = [obj.codec_name, obj.channel_layout || (obj.channels ? `${obj.channels}ch` : null), obj.language].filter(Boolean);
+  return parts.join(' · ');
+};
+
 export const compressionPercent = (original, compressed) => {
   if (!original || !compressed || original <= 0) return 'NA';
   return `${(((original - compressed) / original) * 100).toFixed(1)}%`;
@@ -32,7 +39,7 @@ export const compressionPercent = (original, compressed) => {
 export const runtimeFromProbe = (ffprobe) => {
   try {
     const data = JSON.parse(ffprobe);
-    return formatDuration(parseFloat(data.duration));
+    return formatDuration(Number.parseFloat(data['format'].duration));
   } catch {
     return 'NA';
   }
@@ -41,7 +48,7 @@ export const runtimeFromProbe = (ffprobe) => {
 export const progressFromProbe = (ffprobe, ffmpegOut) => {
   try {
     const data = JSON.parse(ffprobe);
-    const duration = parseFloat(data.duration);
+    const duration = parseFloat((data.format || data).duration);
     const timeMatch = ffmpegOut.match(/time=(\d+):(\d+):(\d+\.\d+)/);
     const speedMatch = ffmpegOut.match(/speed=([\d.]+)x/);
     const bitrateMatch = ffmpegOut.match(/bitrate=\s*([\d.]+)kbits\/s/);

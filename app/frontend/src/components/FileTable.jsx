@@ -1,16 +1,17 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Flex, Button, Table, Box, Tooltip, Progress, Spinner, Text, Checkbox } from '@radix-ui/themes';
-import { CheckIcon, Cross2Icon, InfoCircledIcon, ResetIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon, CodeIcon, CountdownTimerIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { CheckIcon, Cross2Icon, InfoCircledIcon, ResetIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon, CodeIcon, CountdownTimerIcon, Pencil2Icon, CheckCircledIcon } from '@radix-ui/react-icons';
 import axios from 'axios';
 import Filters from './Filter';
 import ConfirmDialog from './ConfirmDialog';
 import HistoryDialog from './HistoryDialog';
 import CommandEditDialog from './CommandEditDialog';
+import StreamSelectDialog from './StreamSelectDialog';
 import { useToast } from './Toast';
-import { byteToHuman, runtimeFromProbe, compressionPercent, progressFromProbe, relativeTime } from '../helpers';
+import { byteToHuman, runtimeFromProbe, compressionPercent, progressFromProbe, relativeTime, formatStreamLabel } from '../helpers';
 
 const ACTION_CONFIG = {
-  pending: { positive: 'confirmed', negative: 'rejected', delete: true },
+  pending: { positive: 'confirmed', negative: 'rejected', complete: 'replaced', delete: true },
   confirmed: { revert: 'pending' },
   optimized: { positive: 'accepted', negative: 'skipped' },
   ready: { revert: 'pending' },
@@ -19,7 +20,7 @@ const ACTION_CONFIG = {
   failed: { delete: true },
 };
 
-const DESTRUCTIVE = new Set(['rejected', 'skipped', 'delete']);
+const DESTRUCTIVE = new Set(['rejected', 'skipped', 'delete', 'replaced']);
 
 function FileTable({ status, onAction }) {
   const toast = useToast();
@@ -30,6 +31,7 @@ function FileTable({ status, onAction }) {
   const [codecFilter, setCodecFilter] = useState('all');
   const [fileNameSearch, setFileNameSearch] = useState('');
   const [filePathSearch, setFilePathSearch] = useState('');
+  const [streamTierFilter, setStreamTierFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(new Set());
@@ -39,6 +41,7 @@ function FileTable({ status, onAction }) {
   const [confirm, setConfirm] = useState(null);
   const [historyModal, setHistoryModal] = useState(null);
   const [commandModal, setCommandModal] = useState(null);
+  const [streamModal, setStreamModal] = useState(null);
   const itemsPerPage = 50;
 
   const HISTORY_TABS = new Set(['confirmed', 'ready', 'processing', 'optimized', 'replaced', 'rejected', 'skipped', 'failed']);
@@ -55,9 +58,13 @@ function FileTable({ status, onAction }) {
 
   const toCodec = useCallback((codec) => (codec === 'all' ? null : codec.toLowerCase()), []);
 
-  const fetchFiles = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const initialLoadDone = React.useRef(false);
+
+  const fetchFiles = useCallback(async (background = false) => {
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const response = await axios.get(`/api/videos/${status}`, {
         params: {
@@ -65,29 +72,35 @@ function FileTable({ status, onAction }) {
           size: toByte(sizeFilter), codec: toCodec(codecFilter),
           name: fileNameSearch, directory: filePathSearch,
           sort_by: sortBy, sort_order: sortOrder,
+          ...(status === 'pending' && streamTierFilter !== 'all' ? { stream_tier: streamTierFilter } : {}),
         },
       });
       setFiles(response.data.list);
       setTotalPages(response.data.total_pages);
-      setSelected(new Set());
+      if (!background) setSelected(new Set());
+      initialLoadDone.current = true;
     } catch (err) {
-      if (!axios.isCancel(err)) setError('Failed to fetch files.');
+      if (!axios.isCancel(err) && !background) setError('Failed to fetch files.');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
-  }, [currentPage, sizeFilter, codecFilter, fileNameSearch, filePathSearch, sortBy, sortOrder, status, toCodec]);
+  }, [currentPage, sizeFilter, codecFilter, fileNameSearch, filePathSearch, sortBy, sortOrder, status, toCodec, streamTierFilter]);
 
   useEffect(() => {
-    const timer = setTimeout(fetchFiles, 300);
+    initialLoadDone.current = false;
+    const timer = setTimeout(() => fetchFiles(false), 300);
     return () => clearTimeout(timer);
   }, [fetchFiles]);
 
+  const hasOpenDialog = !!(confirm || streamModal || commandModal || historyModal);
+
   useEffect(() => {
+    if (hasOpenDialog) return;
     if (['ready', 'processing', 'pending', 'confirmed', 'optimized'].includes(status)) {
-      const interval = setInterval(fetchFiles, 10000);
+      const interval = setInterval(() => fetchFiles(true), 10000);
       return () => clearInterval(interval);
     }
-  }, [status, fetchFiles]);
+  }, [status, fetchFiles, hasOpenDialog]);
 
   const handleSort = (col) => {
     if (sortBy === col) {
@@ -135,6 +148,21 @@ function FileTable({ status, onAction }) {
   };
 
   const confirmAction = (id, action) => {
+    if (action === 'confirmed' && status === 'pending') {
+      const file = files.find(f => f.id === id);
+      const audio = safeParseJson(file?.audio_streams);
+      const subs = safeParseJson(file?.subtitle_streams);
+      // Multi-audio or has subtitles — open stream selection dialog
+      if (audio.length > 1 || subs.length > 0) {
+        setStreamModal(file);
+        return;
+      }
+      // Single audio, no subs — auto-select and confirm
+      if (audio.length === 1) {
+        handleStreamConfirm(id, audio[0], null);
+        return;
+      }
+    }
     if (DESTRUCTIVE.has(action)) {
       setConfirm({ id, action, message: `Are you sure you want to ${action === 'delete' ? 'delete' : action} this video?` });
     } else {
@@ -142,7 +170,101 @@ function FileTable({ status, onAction }) {
     }
   };
 
+  const safeParseJson = (str) => {
+    try { return JSON.parse(str) || []; } catch { return []; }
+  };
+
+  const safeParseObj = (str) => {
+    try { return typeof str === 'string' ? JSON.parse(str) : str; } catch { return null; }
+  };
+
+  const formatAudioDisplay = (file) => {
+    if (status === 'pending') {
+      const streams = safeParseJson(file.audio_streams);
+      if (!streams.length) return 'NA';
+      return streams.map(s => formatStreamLabel(s)).join(', ');
+    }
+    const sel = safeParseObj(file.selected_audio);
+    return sel ? formatStreamLabel(sel) : 'NA';
+  };
+
+  const formatSubtitleDisplay = (file) => {
+    if (status === 'pending') {
+      const streams = safeParseJson(file.subtitle_streams);
+      if (!streams.length) return 'None';
+      return streams.map(s => formatStreamLabel(s)).join(', ');
+    }
+    const sel = safeParseObj(file.selected_subtitle);
+    return sel ? formatStreamLabel(sel) : 'None';
+  };
+
+  const getStreamTier = (file) => {
+    if (status !== 'pending') return null;
+    const audio = safeParseJson(file.audio_streams);
+    const subs = safeParseJson(file.subtitle_streams);
+    if (audio.length > 1 && subs.length >= 2) return 'red';
+    if (audio.length > 1) return 'yellow';
+    if (audio.length === 1 && subs.length >= 2) return 'green';
+    return 'white';
+  };
+
+  const TIER_ROW_BG = {
+    red: 'rgba(255, 0, 0, 0.08)',
+    yellow: 'rgba(255, 180, 0, 0.08)',
+    green: 'rgba(0, 180, 0, 0.08)',
+  };
+
+  const TIER_TOOLTIP = {
+    red: 'Multiple audio & subtitles — manual selection required, no auto-approve',
+    yellow: 'Multiple audio — manual selection required, no auto-approve',
+    green: 'Single audio, multiple subtitles — auto-approve eligible, subtitle selection available',
+    white: 'Single audio, no/single subtitle — auto-approve eligible',
+  };
+
+  const TIER_EMOJI = { red: '🔴', yellow: '🟡', green: '🟢', white: '⚪' };
+  const TIER_TEXT_COLOR = { red: 'red', yellow: 'orange', green: 'green' };
+
+  const handleStreamConfirm = async (id, audioObj, subObj) => {
+    try {
+      await axios.put(`/api/videos/${id}/streams`, {
+        selected_audio: audioObj,
+        selected_subtitle: subObj || null,
+      });
+      toast('Stream selection saved & confirmed', 'success');
+      setStreamModal(null);
+      fetchFiles();
+      onAction?.();
+    } catch (err) {
+      toast(err.response?.data?.detail || 'Failed to save stream selection', 'error');
+    }
+  };
+
   const confirmBulk = (action) => {
+    if (action === 'confirmed' && status === 'pending') {
+      // Bulk confirm: only single-audio, no-subtitle videos
+      const ids = [...selected];
+      const eligible = files.filter(f => {
+        if (!ids.includes(f.id)) return false;
+        const audio = safeParseJson(f.audio_streams);
+        return audio.length === 1;
+      });
+      const skipped = ids.length - eligible.length;
+      if (eligible.length > 0) {
+        Promise.all(eligible.map(f => {
+          const audio = safeParseJson(f.audio_streams);
+          return axios.put(`/api/videos/${f.id}/streams`, {
+            selected_audio: audio[0], selected_subtitle: null,
+          });
+        })).then(() => {
+          toast(`Confirmed ${eligible.length} video(s)${skipped ? `, skipped ${skipped} (multi-audio, require manual selection)` : ''}`, 'success');
+          fetchFiles();
+          onAction?.();
+        }).catch(() => toast('Bulk confirm failed', 'error'));
+      } else {
+        toast(`All ${skipped} selected video(s) require manual stream selection`, 'info');
+      }
+      return;
+    }
     if (DESTRUCTIVE.has(action)) {
       setConfirm({ bulk: true, action, message: `Are you sure you want to ${action} ${selected.size} video(s)?` });
     } else {
@@ -171,6 +293,9 @@ function FileTable({ status, onAction }) {
     return history.filter((h) => ['confirmed', 're-confirmed'].includes(h.status)).length;
   };
 
+  const streamModalAudio = useMemo(() => safeParseJson(streamModal?.audio_streams), [streamModal]);
+  const streamModalSubs = useMemo(() => safeParseJson(streamModal?.subtitle_streams), [streamModal]);
+
   const config = ACTION_CONFIG[status];
 
   if (!loading && !error && files.length === 0) {
@@ -182,6 +307,7 @@ function FileTable({ status, onAction }) {
             codecFilter={codecFilter} setCodecFilter={setCodecFilter}
             fileNameSearch={fileNameSearch} setFileNameSearch={setFileNameSearch}
             filePathSearch={filePathSearch} setFilePathSearch={setFilePathSearch}
+            {...(status === 'pending' ? { streamTierFilter, setStreamTierFilter } : {})}
           />
         </Box>
         <Flex direction="column" align="center" justify="center" py="9" gap="2">
@@ -200,6 +326,7 @@ function FileTable({ status, onAction }) {
           codecFilter={codecFilter} setCodecFilter={setCodecFilter}
           fileNameSearch={fileNameSearch} setFileNameSearch={setFileNameSearch}
           filePathSearch={filePathSearch} setFilePathSearch={setFilePathSearch}
+          {...(status === 'pending' ? { streamTierFilter, setStreamTierFilter } : {})}
         />
         {hasActions && selected.size > 0 && (
           <Flex gap="2" mt="2" align="center">
@@ -207,6 +334,7 @@ function FileTable({ status, onAction }) {
             {config?.positive && <Button size="1" color="green" onClick={() => confirmBulk(config.positive)}><CheckIcon /> {config.positive}</Button>}
             {config?.negative && <Button size="1" color="yellow" onClick={() => confirmBulk(config.negative)}><Cross2Icon /> {config.negative}</Button>}
             {config?.revert && <Button size="1" color="blue" onClick={() => confirmBulk(config.revert)}><ResetIcon /> Revert</Button>}
+            {config?.complete && <Button size="1" color="grass" onClick={() => confirmBulk(config.complete)}><CheckCircledIcon /> Complete</Button>}
             {config?.delete && <Button size="1" color="red" onClick={() => confirmBulk('delete')}><TrashIcon /> Delete</Button>}
           </Flex>
         )}
@@ -232,6 +360,8 @@ function FileTable({ status, onAction }) {
                 <Flex align="center" gap="1">Codec <SortIcon col="original_codec" /></Flex>
               </Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Runtime</Table.ColumnHeaderCell>
+              {status !== 'pending' && <Table.ColumnHeaderCell>Audio</Table.ColumnHeaderCell>}
+              {status !== 'pending' && <Table.ColumnHeaderCell>Subtitle</Table.ColumnHeaderCell>}
               {status === 'optimized' && <Table.ColumnHeaderCell>Compressed</Table.ColumnHeaderCell>}
               {(status === 'optimized' || status === 'failed') && <Table.ColumnHeaderCell>Attempts</Table.ColumnHeaderCell>}
               <Table.ColumnHeaderCell onClick={() => handleSort('original_size')} style={{ cursor: 'pointer' }}>
@@ -247,7 +377,7 @@ function FileTable({ status, onAction }) {
           <Table.Body>
             {files.map((file, index) => (
               <React.Fragment key={file.id}>
-                <Table.Row style={{ backgroundColor: index % 2 === 0 ? 'var(--row-alt-bg)' : 'transparent' }}>
+                <Table.Row style={{ backgroundColor: TIER_ROW_BG[getStreamTier(file)] || (index % 2 === 0 ? 'var(--row-alt-bg)' : 'transparent') }}>
                   {hasActions && (
                     <Table.Cell>
                       <Checkbox checked={selected.has(file.id)} onCheckedChange={() => toggleSelect(file.id)} />
@@ -255,9 +385,10 @@ function FileTable({ status, onAction }) {
                   )}
                   <Table.Cell>
                     <Flex align="center" gap="1">
-                      {file.filename}
+                      <Text color={TIER_TEXT_COLOR[getStreamTier(file)] || undefined}>{file.filename}</Text>
+                      {getStreamTier(file) && <Tooltip content={TIER_TOOLTIP[getStreamTier(file)]}><Text size="1">{TIER_EMOJI[getStreamTier(file)]}</Text></Tooltip>}
                       <Tooltip content={file.filepath}><InfoCircledIcon /></Tooltip>
-                      {(file.ai_command || file.ffprobe_data) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
+                      {(file.ai_command || file.ffprobe_data || file.system_info) && ['ready', 'processing', 'optimized', 'replaced', 'failed', 'confirmed', 'skipped'].includes(status) && (
                         <Tooltip content="View AI command">
                           <Button size="1" variant="ghost" onClick={() => setExpandedId(expandedId === file.id ? null : file.id)}>
                             <CodeIcon />
@@ -271,6 +402,8 @@ function FileTable({ status, onAction }) {
                     {file.new_codec && ` → ${file.new_codec}`}
                   </Table.Cell>
                   <Table.Cell>{file.ffprobe_data ? runtimeFromProbe(file.ffprobe_data) : 'NA'}</Table.Cell>
+                  {status !== 'pending' && <Table.Cell><Text size="1">{formatAudioDisplay(file)}</Text></Table.Cell>}
+                  {status !== 'pending' && <Table.Cell><Text size="1">{formatSubtitleDisplay(file)}</Text></Table.Cell>}
                   {status === 'optimized' && <Table.Cell>{compressionPercent(file.original_size, file.optimized_size)}</Table.Cell>}
                   {(status === 'optimized' || status === 'failed') && <Table.Cell>{countAttempts(file?.history)}</Table.Cell>}
                   <Table.Cell>
@@ -310,6 +443,11 @@ function FileTable({ status, onAction }) {
                         {config?.revert && (
                           <Button size="1" color="blue" onClick={() => handleAction(file.id, config.revert)}><ResetIcon /></Button>
                         )}
+                        {config?.complete && (
+                          <Tooltip content="Mark complete">
+                            <Button size="1" color="grass" onClick={() => confirmAction(file.id, config.complete)}><CheckCircledIcon /></Button>
+                          </Tooltip>
+                        )}
                         {config?.delete && (
                           <Button size="1" color="red" onClick={() => confirmAction(file.id, 'delete')}><TrashIcon /></Button>
                         )}
@@ -331,6 +469,17 @@ function FileTable({ status, onAction }) {
                   <Table.Row>
                     <Table.Cell colSpan={10} style={{ background: 'var(--expanded-bg)', padding: '12px 16px' }}>
                       <Flex gap="4" wrap="wrap">
+                        {file.system_info && (
+                          <Box style={{ flex: 1, minWidth: 280 }}>
+                            <Flex justify="between" align="center" mb="1">
+                              <Text size="1" color="gray" weight="bold">🖥️ System Info</Text>
+                              <Button size="1" variant="ghost" onClick={() => { navigator.clipboard.writeText(typeof file.system_info === 'string' ? file.system_info : JSON.stringify(file.system_info, null, 2)); toast('System info copied', 'info'); }}>Copy</Button>
+                            </Flex>
+                            <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
+                              {(() => { try { return JSON.stringify(JSON.parse(file.system_info), null, 2); } catch { return file.system_info; } })()}
+                            </pre>
+                          </Box>
+                        )}
                         {file.ffprobe_data && (
                           <Box style={{ flex: 1, minWidth: 280 }}>
                             <Flex justify="between" align="center" mb="1">
@@ -339,6 +488,17 @@ function FileTable({ status, onAction }) {
                             </Flex>
                             <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
                               {JSON.stringify(JSON.parse(file.ffprobe_data), null, 2)}
+                            </pre>
+                          </Box>
+                        )}
+                        {file.ffprobe_data_new && (
+                          <Box style={{ flex: 1, minWidth: 280 }}>
+                            <Flex justify="between" align="center" mb="1">
+                              <Text size="1" color="gray" weight="bold">📋 Output Metadata</Text>
+                              <Button size="1" variant="ghost" onClick={() => { navigator.clipboard.writeText(JSON.stringify(JSON.parse(file.ffprobe_data_new), null, 2)); toast('Output metadata copied', 'info'); }}>Copy</Button>
+                            </Flex>
+                            <pre style={{ margin: 0, padding: 8, background: 'var(--code-bg)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto', cursor: 'text', userSelect: 'text' }}>
+                              {JSON.stringify(JSON.parse(file.ffprobe_data_new), null, 2)}
                             </pre>
                           </Box>
                         )}
@@ -375,6 +535,8 @@ function FileTable({ status, onAction }) {
         command={commandModal?.ai_command}
         ffprobeData={commandModal?.ffprobe_data}
         ffprobeDataNew={commandModal?.ffprobe_data_new}
+        selectedAudio={commandModal?.selected_audio}
+        selectedSubtitle={commandModal?.selected_subtitle}
         onClose={() => setCommandModal(null)}
         onSave={async (cmd) => {
           try {
@@ -405,6 +567,15 @@ function FileTable({ status, onAction }) {
           else handleAction(confirm.id, confirm.action);
           setConfirm(null);
         }}
+      />
+
+      <StreamSelectDialog
+        open={!!streamModal}
+        filename={streamModal?.filename}
+        audioStreams={streamModalAudio}
+        subtitleStreams={streamModalSubs}
+        onClose={() => setStreamModal(null)}
+        onConfirm={(audioObj, subObj) => handleStreamConfirm(streamModal.id, audioObj, subObj)}
       />
     </>
   );

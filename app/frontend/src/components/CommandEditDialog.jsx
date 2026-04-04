@@ -35,7 +35,7 @@ const MetaRow = ({ label, value, newValue }) => (
   </Flex>
 );
 
-function CommandEditDialog({ open, filename, command, ffprobeData, ffprobeDataNew, onSave, onClose }) {
+function CommandEditDialog({ open, filename, command, ffprobeData, ffprobeDataNew, selectedAudio, selectedSubtitle, onSave, onClose }) {
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
 
@@ -50,6 +50,13 @@ function CommandEditDialog({ open, filename, command, ffprobeData, ffprobeDataNe
 
   const meta = parseMeta(ffprobeData);
   const metaNew = parseMeta(ffprobeDataNew);
+
+  const parsedAudio = (() => {
+    try { return selectedAudio ? (typeof selectedAudio === 'string' ? JSON.parse(selectedAudio) : selectedAudio) : null; } catch { return null; }
+  })();
+  const parsedSubtitle = (() => {
+    try { return selectedSubtitle ? (typeof selectedSubtitle === 'string' ? JSON.parse(selectedSubtitle) : selectedSubtitle) : null; } catch { return null; }
+  })();
 
   const handleSave = () => {
     const trimmed = value.trim();
@@ -97,6 +104,22 @@ function CommandEditDialog({ open, filename, command, ffprobeData, ffprobeDataNe
             <MetaRow label="Size" value={meta.size} newValue={metaNew?.size} />
             <MetaRow label="Bitrate" value={meta.bitrate} newValue={metaNew?.bitrate} />
             <MetaRow label="Streams" value={meta.streams} newValue={metaNew?.streams} />
+          </Box>
+        )}
+
+        {(parsedAudio || parsedSubtitle !== undefined) && (
+          <Box mb="3" p="3" style={{ background: 'var(--meta-bg)', borderRadius: 8, border: '1px solid var(--meta-border)' }}>
+            <Text size="1" weight="bold" color="gray" mb="1" style={{ display: 'block' }}>🎧 Stream Selection</Text>
+            {parsedAudio && (
+              <MetaRow
+                label="Audio"
+                value={`#${parsedAudio.index} — ${parsedAudio.codec_name} · ${parsedAudio.channels}ch · ${parsedAudio.language || 'und'}`}
+              />
+            )}
+            <MetaRow
+              label="Subtitle"
+              value={parsedSubtitle ? `#${parsedSubtitle.index} — ${parsedSubtitle.codec_name} · ${parsedSubtitle.language || 'und'}` : 'None (removed)'}
+            />
           </Box>
         )}
 
